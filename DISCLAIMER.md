@@ -107,7 +107,7 @@ This disclaimer, together with the Software's license (MIT License), constitutes
 
 ## CONTACT
 
-For questions regarding this disclaimer, please open an issue on the project's GitHub repository.
+For questions regarding this disclaimer, please open an issue on the project's GitHub repository: https://github.com/luuuccasss/SecureChat/issues
 
 **BY USING SECURECHAT, YOU ACKNOWLEDGE THAT YOU HAVE READ THIS DISCLAIMER AND AGREE TO BE BOUND BY ITS TERMS.**
 

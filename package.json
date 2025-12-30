@@ -27,12 +27,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/votre-username/securechat.git"
+    "url": "https://github.com/luuuccasss/SecureChat.git"
   },
   "bugs": {
-    "url": "https://github.com/votre-username/securechat/issues"
+    "url": "https://github.com/luuuccasss/SecureChat/issues"
   },
-  "homepage": "https://github.com/votre-username/securechat#readme",
+  "homepage": "https://github.com/luuuccasss/SecureChat#readme",
   "devDependencies": {
     "concurrently": "^8.2.2"
   },

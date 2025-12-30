@@ -120,7 +120,7 @@ The authors reserve the right to modify these terms at any time. Your continued 
 
 ## Contact
 
-For legal questions, please open an issue on the project's GitHub repository.
+For legal questions, please open an issue on the project's GitHub repository: https://github.com/luuuccasss/SecureChat/issues
 
 ---
 

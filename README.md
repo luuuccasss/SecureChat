@@ -1,295 +1,529 @@
 # 🔐 SecureChat
 
-End-to-end encrypted real-time messaging system with advanced moderation and complete legal protection.
+**End-to-end encrypted real-time messaging system with advanced moderation and complete legal protection.**
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D16.0.0-brightgreen.svg)
 ![React](https://img.shields.io/badge/react-18.0.0-blue.svg)
+![MySQL](https://img.shields.io/badge/mysql-8.0+-orange.svg)
 
-## ✨ Fonctionnalités
+## 📋 Table of Contents
 
-### 🔒 Sécurité
-- **Chiffrement End-to-End (E2EE)** : AES-256-GCM + RSA-2048
-- **Zero-Knowledge** : Le serveur ne peut jamais déchiffrer les messages
-- **Authentification JWT** sécurisée
-- **Protection anti-spam/flood** avec rate limiting
-- **Détection d'abus** et blacklist IP automatique
-- **Validation stricte** des entrées (anti-XSS/injection)
-- **Isolation complète** des rooms
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [Project Structure](#-project-structure)
+- [Security](#-security)
+- [Development](#-development)
+- [Deployment](#-deployment)
+- [Legal](#-legal)
+- [Contributing](#-contributing)
+- [License](#-license)
 
-### 💬 Communication
-- **Temps réel** via WebSocket (Socket.IO)
-- **Rooms publiques/privées** avec mot de passe
-- **Historique persistant** des messages
-- **Indicateurs temps réel** : en ligne, en train de taper, reçus/lus
-- **Upload de fichiers** chiffrés (images, PDF, documents)
-- **Notifications** en temps réel
+## ✨ Features
 
-### 🛡️ Modération
-- **Système de rôles** : Owner, Admin, Member
-- **Bannissement** d'utilisateurs (temporaire/permanent)
-- **Suppression de messages** par modérateurs
-- **Logs d'audit** complets
-- **Options de room** : modération, slow mode, lecture seule, archivage
+### 🔒 Security
 
-### ⚖️ Conformité Légale
-- **CGU** complètes
-- **Politique de confidentialité** conforme RGPD
-- **Mentions légales**
-- **Protection des données** utilisateurs
+- **End-to-End Encryption (E2EE)**: AES-256-GCM + RSA-2048
+- **Zero-Knowledge Architecture**: Server cannot decrypt messages
+- **Secure JWT Authentication**: Token-based authentication
+- **Anti-Spam/Flood Protection**: Rate limiting and abuse detection
+- **IP Blacklisting**: Automatic blocking of abusive IPs
+- **Strict Input Validation**: Protection against XSS and injection attacks
+- **Complete Room Isolation**: Messages encrypted per room
+
+### 💬 Real-Time Communication
+
+- **WebSocket Support**: Real-time messaging via Socket.IO
+- **Public/Private Rooms**: Password-protected private rooms
+- **Persistent Message History**: All messages stored and encrypted
+- **Real-Time Indicators**: Online status, typing indicators, read receipts
+- **Encrypted File Upload**: Support for images, PDFs, documents
+- **Real-Time Notifications**: Instant message delivery
+
+### 🛡️ Moderation
+
+- **Role System**: Owner, Admin, Member roles
+- **User Banning**: Temporary or permanent bans
+- **Message Deletion**: Moderators can delete messages
+- **Audit Logs**: Complete audit trail of all actions
+- **Room Options**: Moderation, slow mode, read-only, archiving
+
+### ⚖️ Legal Compliance
+
+- **Terms of Service**: Complete terms and conditions
+- **Privacy Policy**: GDPR-compliant privacy policy
+- **Legal Mentions**: Full legal disclaimers
+- **Data Protection**: User data protection measures
+- **Disclaimer**: Comprehensive legal protection (see [DISCLAIMER.md](DISCLAIMER.md))
+
+### 🌍 Internationalization
+
+- **Multi-language Support**: English (default) and French
+- **Language Switcher**: Easy language selection in UI
+- **Browser Language Detection**: Automatic language detection
+- **Persistent Preferences**: Language preference saved in localStorage
 
 ## 🏗️ Architecture
 
-### Stack Technique
+### Technology Stack
 
 **Backend:**
-- Node.js + Express
+- Node.js + Express.js
 - Socket.IO (WebSocket)
 - MySQL + Sequelize ORM
-- JWT (authentification)
-- bcrypt (hashage mots de passe)
+- JWT (Authentication)
+- bcrypt (Password hashing)
 
 **Frontend:**
 - React 18
 - Socket.IO Client
-- Web Crypto API (chiffrement E2EE)
-- Axios (HTTP)
+- Web Crypto API (E2EE encryption)
+- Axios (HTTP client)
 
-**Base de données:**
+**Database:**
 - MySQL 8.0+
+
+### System Architecture
+
+```
+┌─────────────┐         ┌─────────────┐         ┌─────────────┐
+│   Client    │◄───────►│   Server    │◄───────►│   MySQL     │
+│   (React)   │  HTTPS  │  (Express)  │  SQL    │  Database   │
+│             │         │             │         │             │
+│ E2EE Crypto │         │ Socket.IO   │         │ Sequelize   │
+└─────────────┘         └─────────────┘         └─────────────┘
+```
 
 ## 🚀 Installation
 
-### Prérequis
-- Node.js >= 16.0.0
-- MySQL >= 8.0
-- npm ou yarn
+### Prerequisites
 
-### Étapes
+- **Node.js** >= 16.0.0
+- **MySQL** >= 8.0
+- **npm** or **yarn**
+
+### Step-by-Step Installation
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/luuuccasss/securechat.git
-cd securechat
+git clone https://github.com/luuuccasss/SecureChat.git
+cd SecureChat
 ```
 
-2. **Installer les dépendances**
+2. **Install all dependencies**
 ```bash
 npm run install:all
 ```
 
-3. **Configurer MySQL**
+This will install dependencies for:
+- Root project
+- Server (`server/`)
+- Client (`client/`)
+
+3. **Set up MySQL database**
 ```bash
-# Créer la base de données
+# Create the database
 mysql -u root -p -e "CREATE DATABASE securechat CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 # Import the schema
 mysql -u root -p securechat < server/database/schema.sql
 ```
 
-4. **Configurer les variables d'environnement**
+4. **Configure environment variables**
+
+**Server configuration:**
 ```bash
-cp server/.env.example server/.env
-# Éditer server/.env avec vos configurations
+cd server
+cp .env.example .env
+# Edit .env with your actual values
 ```
 
-5. **Générer un JWT_SECRET sécurisé**
+**Client configuration:**
+```bash
+cd client
+cp .env.example .env
+# Edit .env with your actual values
+```
+
+5. **Generate a secure JWT secret**
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-6. **Lancer l'application**
-```bash
-# Développement (backend + frontend)
-npm run dev
+Copy the output and add it to `server/.env` as `JWT_SECRET`.
 
-# Ou séparément
-npm run dev:server  # Backend sur http://localhost:3001
-npm run dev:client  # Frontend sur http://localhost:3000
+6. **Start the application**
+
+**Development mode (both server and client):**
+```bash
+npm run dev
+```
+
+**Or separately:**
+```bash
+# Terminal 1: Backend server
+npm run dev:server
+# Server runs on http://localhost:3001
+
+# Terminal 2: Frontend client
+npm run dev:client
+# Client runs on http://localhost:3000
 ```
 
 ## 📝 Configuration
 
-### Variables d'environnement (`server/.env`)
+### Server Environment Variables (`server/.env`)
 
+See `server/.env.example` for a complete example with all available options.
+
+**Required variables:**
 ```env
-# Serveur
-PORT=3001
-NODE_ENV=development
+# JWT Authentication (REQUIRED)
+JWT_SECRET=your-super-secret-jwt-key-minimum-32-characters-long
 
-# Base de données MySQL
+# Database Configuration (REQUIRED)
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=securechat
 DB_USER=root
-DB_PASSWORD=votre-mot-de-passe
+DB_PASSWORD=your-database-password
 
-# JWT (⚠️ CRITIQUE : changer en production)
-JWT_SECRET=votre-secret-jwt-tres-long-et-securise-minimum-32-caracteres
-JWT_EXPIRES_IN=7d
+# Server Configuration
+PORT=3001
+NODE_ENV=development
 
-# CORS
+# CORS Configuration
 CORS_ORIGIN=http://localhost:3000
+```
 
-# Upload de fichiers
+**Optional variables:**
+```env
+# File Upload
 MAX_FILE_SIZE=10485760  # 10MB
-ALLOWED_FILE_TYPES=jpg,jpeg,png,gif,pdf,doc,docx,txt
+ALLOWED_FILE_TYPES=image/*,application/pdf,text/plain
+UPLOAD_DIR=uploads
+FILE_EXPIRATION_DAYS=30
 
-# Synchronisation DB (développement uniquement)
+# Security
+RATE_LIMIT_MAX=100
+RATE_LIMIT_WINDOW_MS=900000  # 15 minutes
+ENABLE_IP_BLACKLIST=true
+ABUSE_THRESHOLD=10
+
+# Socket.IO
+SOCKET_PING_TIMEOUT=60000
+SOCKET_PING_INTERVAL=25000
+
+# Database Sync (Development only - WARNING: alters schema)
 SYNC_DB=false
 ```
 
-### Migrations de base de données
+### Client Environment Variables (`client/.env`)
 
-Si vous avez une base de données existante, exécutez les migrations :
+See `client/.env.example` for a complete example.
 
+```env
+# API Configuration
+REACT_APP_API_URL=http://localhost:3001/api
+
+# Socket.IO Configuration
+REACT_APP_SOCKET_URL=http://localhost:3001
+
+# File Upload
+REACT_APP_MAX_FILE_SIZE=10485760
+REACT_APP_ALLOWED_FILE_TYPES=image/*,.pdf,.doc,.docx,.txt
+
+# Application
+REACT_APP_NAME=SecureChat
+REACT_APP_DEFAULT_LANGUAGE=en
+```
+
+## 📁 Project Structure
+
+```
+SecureChat/
+├── client/                    # React frontend
+│   ├── public/               # Static files
+│   │   ├── index.html
+│   │   ├── legal.html        # Legal mentions
+│   │   ├── cgu.html          # Terms of service
+│   │   └── privacy.html      # Privacy policy
+│   ├── src/
+│   │   ├── components/       # React components
+│   │   │   ├── Auth/        # Authentication components
+│   │   │   ├── Chat/        # Chat components
+│   │   │   └── LanguageSwitcher.js
+│   │   ├── crypto/          # E2EE encryption service
+│   │   ├── i18n/            # Internationalization
+│   │   │   ├── locales/    # Translation files
+│   │   │   └── index.js
+│   │   ├── services/        # API and Socket.IO services
+│   │   ├── App.js
+│   │   └── index.js
+│   ├── .env.example
+│   └── package.json
+│
+├── server/                    # Node.js backend
+│   ├── config/              # Configuration files
+│   │   └── database.js      # Sequelize configuration
+│   ├── database/            # Database scripts
+│   │   └── schema.sql       # Database schema
+│   ├── middleware/          # Express middlewares
+│   │   ├── auth.js          # JWT authentication
+│   │   ├── errorHandler.js  # Error handling
+│   │   ├── security.js      # Security measures
+│   │   └── validation.js    # Input validation
+│   ├── models/              # Sequelize models
+│   │   ├── User.js
+│   │   ├── Room.js
+│   │   ├── Message.js
+│   │   ├── File.js
+│   │   └── index.js
+│   ├── routes/              # API routes
+│   │   ├── auth.js
+│   │   ├── rooms.js
+│   │   ├── messages.js
+│   │   ├── files.js
+│   │   └── moderation.js
+│   ├── socket/              # Socket.IO handlers
+│   │   └── socketHandler.js
+│   ├── uploads/             # Uploaded files (gitignored)
+│   ├── .env.example
+│   ├── index.js             # Server entry point
+│   └── package.json
+│
+├── .gitignore
+├── DISCLAIMER.md            # Legal disclaimer
+├── LEGAL_NOTICE.md          # Legal notice
+├── LICENSE                  # MIT License
+├── README.md                # This file
+└── package.json             # Root package.json
+```
+
+## 🔒 Security
+
+### Implemented Security Measures
+
+- ✅ **End-to-End Encryption**: AES-256-GCM for messages, RSA-2048 for key exchange
+- ✅ **JWT Authentication**: Secure token-based authentication
+- ✅ **Rate Limiting**: Protection against spam and DDoS
+- ✅ **Abuse Detection**: Automatic IP blacklisting
+- ✅ **Input Validation**: Protection against XSS and SQL injection
+- ✅ **CSRF Protection**: Cross-site request forgery protection
+- ✅ **Room Isolation**: Complete message isolation between rooms
+- ✅ **Audit Logging**: Complete audit trail of all actions
+- ✅ **Security Headers**: Helmet.js for HTTP security headers
+- ✅ **Password Hashing**: bcrypt with salt rounds
+
+### Production Security Checklist
+
+Before deploying to production, ensure:
+
+- [ ] **HTTPS enabled** (SSL/TLS certificates)
+- [ ] **Strong JWT_SECRET** (minimum 32 characters, randomly generated)
+- [ ] **Secure MySQL** (strong password, restricted access)
+- [ ] **Rate limiting configured** (appropriate limits for your use case)
+- [ ] **Logging configured** (error tracking, monitoring)
+- [ ] **Monitoring setup** (Sentry, DataDog, etc.)
+- [ ] **Automatic MySQL backups** (daily backups recommended)
+- [ ] **Firewall configured** (restrict database access)
+- [ ] **Private keys stored securely** (not in code or environment variables)
+- [ ] **Environment variables secured** (use secret management)
+- [ ] **Regular security updates** (keep dependencies updated)
+- [ ] **Security audit** (regular penetration testing)
+
+### Security Best Practices
+
+1. **Never commit sensitive data**:
+   - `.env` files
+   - Private keys
+   - Passwords
+   - API keys
+
+2. **Use strong secrets**:
+   ```bash
+   # Generate secure random strings
+   openssl rand -base64 32
+   ```
+
+3. **Keep dependencies updated**:
+   ```bash
+   npm audit
+   npm audit fix
+   ```
+
+4. **Regular security reviews**:
+   - Review access logs
+   - Monitor for suspicious activity
+   - Update security patches
+
+## 🧪 Development
+
+### Available Scripts
+
+**Root level:**
 ```bash
-# Ajouter fileId aux messages
-mysql -u root -p securechat < server/database/add_fileId_column.sql
-
-# Add moderation columns
-mysql -u root -p securechat < server/database/add_room_moderation_columns.sql
-
-# Fix file expiration dates
-mysql -u root -p securechat < server/database/fix_file_expiration.sql
-
-# Add moderation tables
-mysql -u root -p securechat < server/database/migration_moderation.sql
+npm run dev              # Start both server and client in development
+npm run dev:server       # Start only the server
+npm run dev:client       # Start only the client
+npm run build            # Build client for production
+npm run start            # Start server in production mode
+npm run install:all      # Install all dependencies (root, server, client)
 ```
 
-## 📁 Structure du Projet
-
-```
-securechat/
-├── client/                 # Frontend React
-│   ├── public/            # Fichiers statiques (CGU, etc.)
-│   └── src/
-│       ├── components/    # Composants React
-│       ├── crypto/       # Service de chiffrement E2EE
-│       └── services/      # API et Socket.IO
-│
-├── server/                # Backend Node.js
-│   ├── config/           # Configuration (DB, etc.)
-│   ├── database/         # Scripts SQL et migrations
-│   ├── middleware/       # Middlewares (auth, validation, security)
-│   ├── models/           # Modèles Sequelize
-│   ├── routes/           # Routes Express API
-│   ├── socket/           # Gestion Socket.IO
-│   └── uploads/          # Fichiers uploadés (gitignored)
-│
-├── docs/                  # Documentation
-│   ├── ARCHITECTURE.md
-│   ├── SECURITY.md
-│   └── DEPLOYMENT.md
-│
-└── README.md
-```
-
-## 🔑 Fonctionnalités Détaillées
-
-### Chiffrement End-to-End
-
-- **RSA-2048** pour l'échange de clés
-- **AES-256-GCM** pour le chiffrement des messages
-- Clés privées stockées uniquement côté client
-- Le serveur ne peut jamais déchiffrer les messages
-
-### Système de Rooms
-
-- **Rooms publiques** : accessibles à tous
-- **Rooms privées** : protégées par mot de passe
-- **Permissions** : Owner, Admin, Member
-- **Options** : modération, slow mode, lecture seule, archivage
-
-### Modération
-
-- Bannissement temporaire/permanent
-- Suppression de messages
-- Changement de rôles
-- Logs d'audit complets
-
-## 🔒 Sécurité
-
-### Mesures Implémentées
-
-- ✅ Chiffrement E2EE (AES-256-GCM + RSA-2048)
-- ✅ Authentification JWT sécurisée
-- ✅ Rate limiting (anti-spam/flood)
-- ✅ Détection d'abus et blacklist IP
-- ✅ Validation stricte des entrées
-- ✅ Protection CSRF
-- ✅ Isolation complète des rooms
-- ✅ Logs d'audit
-- ✅ Helmet.js (headers de sécurité)
-
-### Checklist Production
-
-- [ ] HTTPS activé
-- [ ] JWT_SECRET fort et unique
-- [ ] MySQL avec authentification
-- [ ] Rate limiting configuré
-- [ ] Logs configurés
-- [ ] Monitoring (Sentry, etc.)
-- [ ] Backup automatique MySQL
-- [ ] Firewall configuré
-- [ ] Clés privées stockées de manière sécurisée
-
-Voir `docs/SECURITY.md` pour plus de détails.
-
-## 📚 Documentation
-
-- [Architecture](docs/ARCHITECTURE.md) - Architecture détaillée du système
-- [Sécurité](docs/SECURITY.md) - Mesures de sécurité
-- [Déploiement](docs/DEPLOYMENT.md) - Guide de déploiement
-- [Schéma DB](docs/SCHEMA.md) - Schéma de base de données
-
-## 🧪 Développement
-
+**Server:**
 ```bash
-# Installer les dépendances
-npm run install:all
+cd server
+npm run dev              # Start with nodemon (auto-reload)
+npm start                # Start in production mode
+```
 
-# Lancer en développement
-npm run dev
+**Client:**
+```bash
+cd client
+npm start                # Start development server
+npm run build            # Build for production
+```
 
-# Build pour production
+### Development Workflow
+
+1. **Fork and clone** the repository
+2. **Create a branch** for your feature: `git checkout -b feature/your-feature`
+3. **Make changes** and test locally
+4. **Commit** your changes: `git commit -m "Add your feature"`
+5. **Push** to your fork: `git push origin feature/your-feature`
+6. **Open a Pull Request** on GitHub
+
+### Code Style
+
+- Use **ESLint** for code linting
+- Follow **React best practices**
+- Write **comprehensive comments** (in English)
+- Use **descriptive variable names**
+- Follow **async/await** patterns (avoid callbacks)
+
+## 🚀 Deployment
+
+### Production Deployment
+
+1. **Build the client**:
+```bash
+cd client
 npm run build
+```
 
-# Lancer en production
+2. **Set production environment variables**:
+```bash
+# server/.env
+NODE_ENV=production
+CORS_ORIGIN=https://yourdomain.com
+# ... other production settings
+```
+
+3. **Start the server**:
+```bash
+cd server
 npm start
 ```
 
-## 📄 Licence
+### Environment-Specific Configuration
 
-MIT License - Voir [LICENSE](LICENSE) pour plus de détails.
+- **Development**: `NODE_ENV=development`
+- **Production**: `NODE_ENV=production`
+- **Testing**: `NODE_ENV=test`
 
-## ⚠️ Avertissement
+## ⚖️ Legal
 
-Ce système est conçu pour un environnement de production mais nécessite :
-- Configuration HTTPS
-- Secrets sécurisés (JWT_SECRET, DB_PASSWORD)
-- Variables d'environnement correctement configurées
-- Base de données MySQL sécurisée
+### Important Legal Information
 
-**Ne jamais commiter** :
-- Fichiers `.env`
-- Clés privées
-- Mots de passe
-- Fichiers uploadés
+**⚠️ READ THE DISCLAIMER BEFORE USING THIS SOFTWARE**
 
-## 🤝 Contribution
+This software is provided "AS IS" without any warranties. See [DISCLAIMER.md](DISCLAIMER.md) for complete legal information.
 
-Les contributions sont les bienvenues ! Veuillez :
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/AmazingFeature`)
-3. Commit vos changements (`git commit -m 'Add some AmazingFeature'`)
-4. Push vers la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrir une Pull Request
+**Key points:**
+- No warranties or guarantees
+- Limited liability
+- Security disclaimers
+- Illegal use prohibition
+- Data privacy compliance responsibility
+- No technical support guarantee
 
-## 📧 Contact
+### Legal Documents
 
-For any questions or issues, please open an [issue](https://github.com/votre-username/securechat/issues).
+- **[DISCLAIMER.md](DISCLAIMER.md)**: Complete legal disclaimer and terms of use
+- **[LEGAL_NOTICE.md](LEGAL_NOTICE.md)**: Legal notice and user agreement
+- **[LICENSE](LICENSE)**: MIT License
+- **Legal pages** (in `client/public/`):
+  - `legal.html`: Legal mentions
+  - `cgu.html`: Terms of service
+  - `privacy.html`: Privacy policy
+
+### Your Responsibilities
+
+When using SecureChat, you are responsible for:
+
+- ✅ Ensuring compliance with applicable laws (GDPR, CCPA, etc.)
+- ✅ Obtaining necessary user consents
+- ✅ Implementing appropriate data retention policies
+- ✅ Securing your deployment
+- ✅ Regular security audits
+- ✅ Not using the software for illegal purposes
+
+## 🤝 Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. **Fork** the repository
+2. **Create a feature branch**: `git checkout -b feature/AmazingFeature`
+3. **Make your changes** and test thoroughly
+4. **Commit** your changes: `git commit -m 'Add some AmazingFeature'`
+5. **Push** to your branch: `git push origin feature/AmazingFeature`
+6. **Open a Pull Request**
+
+### Contribution Guidelines
+
+- Write **clear commit messages**
+- Add **comments** to complex code (in English)
+- Update **documentation** if needed
+- Follow **existing code style**
+- Write **tests** for new features
+- Ensure **no breaking changes** (or document them)
+
+## 📄 License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+## ⚠️ Important Warnings
+
+### Before Production Use
+
+- ⚠️ **Configure HTTPS** (SSL/TLS certificates required)
+- ⚠️ **Set strong secrets** (JWT_SECRET, DB_PASSWORD)
+- ⚠️ **Secure your database** (strong password, restricted access)
+- ⚠️ **Review security settings** (rate limits, blacklists)
+- ⚠️ **Read the disclaimer** ([DISCLAIMER.md](DISCLAIMER.md))
+
+### Never Commit
+
+- ❌ `.env` files
+- ❌ Private keys
+- ❌ Passwords
+- ❌ API keys
+- ❌ Uploaded files
+
+## 📧 Support
+
+For questions, issues, or contributions:
+
+- **GitHub Issues**: [Open an issue](https://github.com/luuuccasss/SecureChat/issues)
+- **GitHub Repository**: [https://github.com/luuuccasss/SecureChat](https://github.com/luuuccasss/SecureChat)
+- **Documentation**: See project documentation files
+- **Security**: Report security issues privately
 
 ---
 
-**Fait avec ❤️ pour la sécurité et la confidentialité**
+**Made with ❤️ for security and privacy**
+
+**⚠️ Remember: Read [DISCLAIMER.md](DISCLAIMER.md) before using this software.**

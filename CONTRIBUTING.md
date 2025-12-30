@@ -1,68 +1,67 @@
-# Guide de Contribution
+# Contributing Guide
 
-Merci de votre intérêt pour contribuer à ChatSecure ! 🎉
+Thank you for your interest in contributing to SecureChat! 🎉
 
-## 🚀 Démarrage Rapide
+## 🚀 Quick Start
 
-1. Fork le repository
-2. Clone votre fork : `git clone https://github.com/votre-username/ChatSecure.git`
-3. Créez une branche : `git checkout -b feature/ma-fonctionnalite`
-4. Installez les dépendances : `npm run install:all`
-5. Configurez votre environnement (voir README.md)
+1. Fork the repository
+2. Clone your fork: `git clone https://github.com/luuuccasss/SecureChat.git`
+3. Create a branch: `git checkout -b feature/my-feature`
+4. Install dependencies: `npm run install:all`
+5. Configure your environment (see README.md)
 
-## 📝 Standards de Code
+## 📝 Code Standards
 
 ### JavaScript/Node.js
-- Utiliser ESLint (configuration incluse)
-- Respecter les conventions de nommage camelCase
-- Commenter le code complexe
-- Gérer les erreurs proprement
+- Use ESLint (configuration included)
+- Follow camelCase naming conventions
+- Comment complex code
+- Handle errors properly
 
 ### React
-- Utiliser les hooks modernes
-- Composants fonctionnels uniquement
-- Props validation avec PropTypes (optionnel)
-- CSS modules ou styled-components
+- Use modern hooks
+- Functional components only
+- Props validation with PropTypes (optional)
+- CSS modules or styled-components
 
-### Base de données
-- Utiliser Sequelize ORM
-- Créer des migrations pour les changements de schéma
-- Documenter les relations
+### Database
+- Use Sequelize ORM
+- Create migrations for schema changes
+- Document relationships
 
-## 🔒 Sécurité
+## 🔒 Security
 
-- **Ne jamais** commiter de secrets (`.env`, clés privées)
-- **Toujours** valider les entrées utilisateur
-- **Toujours** échapper les sorties HTML
-- **Toujours** utiliser des requêtes paramétrées
+- **Never** commit secrets (`.env`, private keys)
+- **Always** validate user input
+- **Always** escape HTML output
+- **Always** use parameterized queries
 
-## 🧪 Tests
+## 🧪 Testing
 
-Avant de soumettre une PR :
-- Vérifier que le code compile sans erreurs
-- Tester les fonctionnalités ajoutées/modifiées
-- Vérifier qu'il n'y a pas de régressions
+Before submitting a PR:
+- Verify code compiles without errors
+- Test added/modified features
+- Check for regressions
 
-## 📋 Format des Commits
+## 📋 Commit Format
 
-Utiliser des messages de commit clairs :
+Use clear commit messages:
 ```
-feat: Ajouter fonctionnalité de bannissement
-fix: Corriger bug de déchiffrement
-docs: Mettre à jour README
-refactor: Réorganiser structure des routes
+feat: Add user banning feature
+fix: Fix decryption bug
+docs: Update README
+refactor: Reorganize routes structure
 ```
 
 ## 🔍 Pull Requests
 
-1. Assurez-vous que votre code respecte les standards
-2. Ajoutez des tests si nécessaire
-3. Mettez à jour la documentation si besoin
-4. Décrivez clairement vos changements dans la PR
+1. Ensure your code follows standards
+2. Add tests if necessary
+3. Update documentation if needed
+4. Clearly describe your changes in the PR
 
 ## ❓ Questions
 
-Si vous avez des questions, ouvrez une issue ou contactez les mainteneurs.
+If you have questions, open an issue or contact the maintainers.
 
-Merci ! 🙏
-
+Thank you! 🙏
