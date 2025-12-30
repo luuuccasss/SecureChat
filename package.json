@@ -1,0 +1,42 @@
+{
+  "name": "securechat",
+  "version": "1.0.0",
+  "description": "End-to-end encrypted real-time messaging system",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,magenta\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && nodemon index.js",
+    "dev:client": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "start": "cd server && node index.js",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install"
+  },
+  "keywords": [
+    "chat",
+    "websocket",
+    "e2ee",
+    "security",
+    "encryption",
+    "real-time",
+    "mysql",
+    "react",
+    "socket.io",
+    "end-to-end-encryption"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/votre-username/securechat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/votre-username/securechat/issues"
+  },
+  "homepage": "https://github.com/votre-username/securechat#readme",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
