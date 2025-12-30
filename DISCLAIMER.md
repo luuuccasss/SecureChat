@@ -1,6 +1,6 @@
 # Legal Disclaimer and Terms of Use
 
-**Last Updated:** [Date]
+**Last Updated:** 2025-12-30
 
 ## ⚠️ IMPORTANT LEGAL NOTICE
 

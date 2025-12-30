@@ -1,11 +1,5 @@
-/**
- * Service de chiffrement end-to-end utilisant Web Crypto API
- * 
- * Algorithme:
- * - RSA-2048 pour l'échange de clés
- * - AES-256-GCM pour le chiffrement symétrique des messages
- */
-
+// End-to-end encryption service using Web Crypto API
+// Uses RSA-2048 for key exchange and AES-256-GCM for message encryption
 class CryptoService {
   constructor() {
     this.keyPair = null;
@@ -161,11 +155,7 @@ class CryptoService {
     );
   }
 
-  /**
-   * Génère une clé AES déterministe basée sur l'ID de la room
-   * NOTE: Ceci est une solution temporaire pour le développement
-   * En production, il faudrait un vrai système d'échange de clés
-   */
+  // Generate deterministic AES key based on room ID
   async generateDeterministicAESKey(roomId) {
     // S'assurer que roomId est une string pour la cohérence
     const roomIdStr = String(roomId);
@@ -202,11 +192,8 @@ class CryptoService {
       let key = this.sharedKeys.get(roomIdNormalized) || this.sharedKeys.get(roomId);
       
       if (!key) {
-        // Utiliser une clé déterministe basée sur l'ID de la room
-        // Cela permet à tous les utilisateurs d'avoir la même clé
         key = await this.generateDeterministicAESKey(roomIdNormalized);
         this.sharedKeys.set(roomIdNormalized, key);
-        // Stocker aussi avec l'ID original au cas où
         if (roomIdNormalized !== String(roomId)) {
           this.sharedKeys.set(roomId, key);
         }
@@ -254,7 +241,6 @@ class CryptoService {
       let key = this.sharedKeys.get(roomIdNormalized) || this.sharedKeys.get(roomId);
       
       if (!key) {
-        // Générer la clé déterministe si elle n'existe pas
         key = await this.generateDeterministicAESKey(roomIdNormalized);
         this.sharedKeys.set(roomIdNormalized, key);
         // Stocker aussi avec l'ID original au cas où
