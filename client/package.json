@@ -1,7 +1,7 @@
 {
-  "name": "s25_testchat-client",
+  "name": "securechat-client",
   "version": "1.0.0",
-  "description": "Frontend du système de chat sécurisé",
+  "description": "SecureChat frontend client",
   "private": true,
   "dependencies": {
     "react": "^18.2.0",

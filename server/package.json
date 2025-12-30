@@ -1,7 +1,7 @@
 {
   "name": "securechat-server",
   "version": "1.0.0",
-  "description": "Backend du système de chat sécurisé",
+  "description": "SecureChat backend server",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
