@@ -11,6 +11,10 @@ node_modules/
 server/.env
 client/.env
 
+# Keep example files (for documentation)
+!server/.env.example
+!client/.env.example
+
 # Build outputs
 client/build/
 dist/
