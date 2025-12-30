@@ -69,7 +69,7 @@ End-to-end encrypted real-time messaging system with advanced moderation and com
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/votre-username/securechat.git
+git clone https://github.com/luuuccasss/securechat.git
 cd securechat
 ```
 
