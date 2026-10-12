@@ -15,7 +15,7 @@ const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 12);
 // Inscription
 router.post('/register', authLimiter, validateRegister, async (req, res, next) => {
   try {
-    const { username, email, password, publicKey } = req.body;
+    const { username, email, password, publicKey, encryptedPrivateKey } = req.body;
 
     // Vérifier si l'utilisateur existe déjà
     const existingUser = await User.findOne({ 
@@ -37,7 +37,8 @@ router.post('/register', authLimiter, validateRegister, async (req, res, next) =
       username,
       email,
       password,
-      publicKey
+      publicKey,
+      encryptedPrivateKey
     });
 
     // Générer le token JWT
@@ -97,6 +98,8 @@ router.post('/login', authLimiter, validateLogin, async (req, res, next) => {
         username: user.username,
         email: user.email,
         publicKey: user.publicKey,
+        // Sealed with a key only the user's password can derive
+        encryptedPrivateKey: user.encryptedPrivateKey,
         isOnline: user.isOnline
       }
     });

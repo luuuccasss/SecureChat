@@ -1,5 +1,6 @@
 const { authenticateSocket } = require('../middleware/auth');
 const { Room, Message, User, RoomMember, MessageRecipient } = require('../models');
+const { hasKey, versionHasKeys } = require('../services/roomKeys');
 
 // Message limits: clients never choose 'system', ciphertexts and IVs have a fixed shape
 const CLIENT_MESSAGE_TYPES = ['text', 'file', 'image'];
@@ -42,6 +43,9 @@ module.exports = (io) => {
 
   io.on('connection', (socket) => {
     console.log(`✅ Utilisateur connecté: ${socket.user.username} (${socket.userId})`);
+
+    // Personal channel: wrapped room keys shared with this user are announced here
+    socket.join(`user:${socket.userId}`);
 
     // Mettre à jour le statut en ligne
     User.update(
@@ -145,7 +149,7 @@ module.exports = (io) => {
     // Envoyer un message
     socket.on('send_message', async (data) => {
       try {
-        const { roomId, content, type = 'text', iv, file } = data || {};
+        const { roomId, content, type = 'text', iv, file, keyVersion } = data || {};
 
         if (!roomId || typeof content !== 'string' || typeof iv !== 'string') {
           return socket.emit('error', { message: 'Données de message incomplètes' });
@@ -185,6 +189,12 @@ module.exports = (io) => {
           lastMessageInRoom.set(key, Date.now());
         }
 
+        // The message must use the current room key, which the sender must hold:
+        // after a member left, senders first create a new key version
+        if (keyVersion !== room.keyVersion || !(await hasKey(room.id, socket.userId, keyVersion))) {
+          return socket.emit('error', { message: 'Clé de room périmée', code: 'STALE_KEY', roomId: room.id });
+        }
+
         // Obtenir tous les membres de la room
         const members = await RoomMember.findAll({
           where: { roomId: room.id }
@@ -207,6 +217,7 @@ module.exports = (io) => {
           content,
           type,
           iv,
+          keyVersion,
           encrypted: true,
           fileId: fileRecord ? fileRecord.id : null,
           fileOriginalName: fileRecord ? fileRecord.originalName : null,
@@ -246,6 +257,7 @@ module.exports = (io) => {
             content: message.content,
             type: message.type,
             iv: message.iv,
+            keyVersion: message.keyVersion,
             file: fileRecord ? { ...message.getFile(), iv: fileRecord.iv } : null,
             encrypted: message.encrypted,
             createdAt: message.createdAt
@@ -264,6 +276,19 @@ module.exports = (io) => {
       } catch (error) {
         console.error('Erreur send_message:', error);
         socket.emit('error', { message: 'Erreur lors de l\'envoi du message' });
+      }
+    });
+
+    // A member without the current room key asks the online members to share it
+    socket.on('request_room_key', async (data) => {
+      try {
+        const room = await Room.findByPk(data?.roomId);
+        if (!room || !(await room.isMember(socket.userId))) return;
+        if (await hasKey(room.id, socket.userId, room.keyVersion)) return;
+        if (!(await versionHasKeys(room.id, room.keyVersion))) return; // a rotation is needed instead
+        socket.to(String(room.id)).emit('room_key_needed', { roomId: room.id, userId: Number(socket.userId) });
+      } catch (error) {
+        console.error('Erreur request_room_key:', error);
       }
     });
 

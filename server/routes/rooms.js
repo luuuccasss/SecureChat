@@ -1,5 +1,7 @@
 const express = require('express');
-const { Room, RoomMember, User, BannedUser } = require('../models');
+const { Room, RoomMember, User, BannedUser, RoomKey } = require('../models');
+const { sequelize } = require('../config/database');
+const { isWrappedKey, hasKey, versionHasKeys, revokeMember } = require('../services/roomKeys');
 const { authenticate } = require('../middleware/auth');
 const { validateCreateRoom } = require('../middleware/validation');
 const bcrypt = require('bcryptjs');
@@ -13,6 +15,8 @@ router.use(authenticate);
 // Créer une room
 router.post('/', validateCreateRoom, async (req, res, next) => {
   try {
+    // The room starts without a key: the creator then creates key version 1
+    // through POST /:roomId/keys/rotate, like any later key change
     const { name, description, isPrivate, password, maxMembers } = req.body;
 
     // Hasher le mot de passe si fourni
@@ -274,6 +278,9 @@ router.post('/:roomId/join', async (req, res, next) => {
       role: 'member'
     });
 
+    // Online members wrap the current room key for the newcomer
+    req.app.get('io')?.to(String(room.id)).emit('room_key_needed', { roomId: room.id, userId: req.user.id });
+
     // Recharger avec les relations
     await room.reload({
       include: [
@@ -330,7 +337,134 @@ router.post('/:roomId/leave', async (req, res, next) => {
       }
     });
 
+    // Future messages use a key the former member never receives
+    await revokeMember(req.app.get('io'), room, req.user.id);
+
     res.json({ message: 'Vous avez quitté la room' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Loads the room and checks membership, for the key routes below
+const loadRoomAsMember = async (req, res) => {
+  const room = await Room.findByPk(req.params.roomId);
+  if (!room) {
+    res.status(404).json({ error: 'Room non trouvée' });
+    return null;
+  }
+  if (!(await room.isMember(req.user.id))) {
+    res.status(403).json({ error: 'Vous n\'êtes pas membre de cette room' });
+    return null;
+  }
+  return room;
+};
+
+// Room keys wrapped for the current user, every version they were given
+router.get('/:roomId/keys', async (req, res, next) => {
+  try {
+    const room = await loadRoomAsMember(req, res);
+    if (!room) return;
+    const keys = await RoomKey.findAll({
+      where: { roomId: room.id, userId: req.user.id },
+      attributes: ['version', 'wrappedKey'],
+      order: [['version', 'ASC']]
+    });
+    res.json({
+      keyVersion: room.keyVersion,
+      // false means nobody holds the current version yet: a rotation is needed
+      currentVersionHasKeys: await versionHasKeys(room.id, room.keyVersion),
+      keys
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Public keys of the members, used to wrap room keys for them
+router.get('/:roomId/public-keys', async (req, res, next) => {
+  try {
+    const room = await loadRoomAsMember(req, res);
+    if (!room) return;
+    const members = await RoomMember.findAll({
+      where: { roomId: room.id },
+      include: [{ model: User, as: 'User', attributes: ['id', 'username', 'publicKey'] }]
+    });
+    res.json({
+      members: members.map(m => ({ userId: m.User.id, username: m.User.username, publicKey: m.User.publicKey }))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Share a key version you hold with another member (e.g. someone who just joined)
+router.post('/:roomId/keys', async (req, res, next) => {
+  try {
+    const room = await loadRoomAsMember(req, res);
+    if (!room) return;
+    const { userId, version, wrappedKey } = req.body;
+    if (!Number.isInteger(userId) || !Number.isInteger(version) || !isWrappedKey(wrappedKey)) {
+      return res.status(400).json({ error: 'Requête invalide' });
+    }
+    if (version < 1 || version > room.keyVersion || !(await hasKey(room.id, req.user.id, version))) {
+      return res.status(403).json({ error: 'Vous ne détenez pas cette version de clé' });
+    }
+    if (!(await room.isMember(userId))) {
+      return res.status(403).json({ error: 'Le destinataire n\'est pas membre de cette room' });
+    }
+    // First share wins: an existing key is never overwritten
+    const [, created] = await RoomKey.findOrCreate({
+      where: { roomId: room.id, userId, version },
+      defaults: { roomId: room.id, userId, version, wrappedKey, createdBy: req.user.id }
+    });
+    if (!created) {
+      return res.status(409).json({ error: 'Clé déjà partagée' });
+    }
+    req.app.get('io')?.to(`user:${userId}`).emit('room_key_shared', { roomId: room.id, version });
+    res.status(201).json({ message: 'Clé partagée' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Create the current key version for every member at once (after someone left)
+router.post('/:roomId/keys/rotate', async (req, res, next) => {
+  try {
+    const room = await loadRoomAsMember(req, res);
+    if (!room) return;
+    const { version, keys } = req.body;
+    if (version !== room.keyVersion) {
+      return res.status(409).json({ error: 'Version de clé périmée', keyVersion: room.keyVersion });
+    }
+    if (await versionHasKeys(room.id, version)) {
+      return res.status(409).json({ error: 'Cette version de clé existe déjà', keyVersion: room.keyVersion });
+    }
+
+    // The new key must be wrapped for exactly the current members
+    const memberIds = (await RoomMember.findAll({ where: { roomId: room.id }, attributes: ['userId'] }))
+      .map(m => m.userId).sort((a, b) => a - b);
+    const keyIds = Array.isArray(keys) ? keys.map(k => k?.userId).sort((a, b) => a - b) : [];
+    const valid = Array.isArray(keys) && keys.every(k => Number.isInteger(k?.userId) && isWrappedKey(k?.wrappedKey));
+    if (!valid || JSON.stringify(memberIds) !== JSON.stringify(keyIds)) {
+      return res.status(400).json({ error: 'Les clés doivent couvrir exactement les membres actuels' });
+    }
+
+    try {
+      await sequelize.transaction(t => RoomKey.bulkCreate(
+        keys.map(k => ({ roomId: room.id, userId: k.userId, version, wrappedKey: k.wrappedKey, createdBy: req.user.id })),
+        { transaction: t }
+      ));
+    } catch (error) {
+      // Another member rotated at the same time
+      if (error.name === 'SequelizeUniqueConstraintError') {
+        return res.status(409).json({ error: 'Cette version de clé existe déjà', keyVersion: room.keyVersion });
+      }
+      throw error;
+    }
+
+    req.app.get('io')?.to(String(room.id)).emit('room_key_rotated', { roomId: room.id, version });
+    res.status(201).json({ message: 'Clé renouvelée', keyVersion: version });
   } catch (error) {
     next(error);
   }

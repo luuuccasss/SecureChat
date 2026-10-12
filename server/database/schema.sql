@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
   publicKey TEXT NOT NULL,
+  encryptedPrivateKey TEXT DEFAULT NULL,
   avatar VARCHAR(500) DEFAULT NULL,
   isOnline BOOLEAN DEFAULT FALSE,
   lastSeen DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   slowMode INT DEFAULT 0,
   readOnly BOOLEAN DEFAULT FALSE,
   archiveAfterDays INT DEFAULT NULL,
+  keyVersion INT NOT NULL DEFAULT 1,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (creatorId) REFERENCES users(id) ON DELETE CASCADE,
@@ -100,6 +102,7 @@ CREATE TABLE IF NOT EXISTS messages (
   fileEncrypted BOOLEAN DEFAULT TRUE,
   encrypted BOOLEAN DEFAULT TRUE,
   iv VARCHAR(255) NOT NULL,
+  keyVersion INT NOT NULL DEFAULT 1,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE,
@@ -163,4 +166,20 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   INDEX idx_roomId_createdAt (roomId, createdAt),
   INDEX idx_action_createdAt (action, createdAt),
   INDEX idx_createdAt (createdAt)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Room keys wrapped for each member (end-to-end encryption, protocol v2)
+CREATE TABLE IF NOT EXISTS room_keys (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  roomId INT NOT NULL,
+  userId INT NOT NULL,
+  version INT NOT NULL,
+  wrappedKey TEXT NOT NULL,
+  createdBy INT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (roomId) REFERENCES rooms(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_room_user_version (roomId, userId, version),
+  INDEX idx_roomId_version (roomId, version)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

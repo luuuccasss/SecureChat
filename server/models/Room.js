@@ -82,6 +82,13 @@ const Room = sequelize.define('Room', {
       min: 1,
       max: 3650
     }
+  },
+  // Current room key version; bumped when a member leaves or is banned so that
+  // the next sender generates a key the former member does not have
+  keyVersion: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1
   }
 }, {
   tableName: 'rooms',

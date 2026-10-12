@@ -78,6 +78,9 @@ app.get('/api/health', (req, res) => {
 
 app.use(errorHandler);
 
+// Routes notify clients over Socket.IO (key requests, member removal)
+app.set('io', io);
+
 // Refuse to start with a missing, short or example JWT secret: anyone who knows
 // it can forge a token for any account
 const EXAMPLE_SECRET = 'your-super-secret-jwt-key-minimum-32-characters-long';

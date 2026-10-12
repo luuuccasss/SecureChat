@@ -58,6 +58,7 @@ router.get('/room/:roomId', async (req, res, next) => {
       content: msg.content,
       type: msg.type,
       iv: msg.iv,
+      keyVersion: msg.keyVersion,
       file: msg.getFile(),
       encrypted: msg.encrypted,
       createdAt: msg.createdAt

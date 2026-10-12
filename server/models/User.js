@@ -29,12 +29,17 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(255),
     allowNull: false,
     validate: {
-      len: [8, 255]
+      len: [8, 255] // bcrypt hash of the client-derived auth key
     }
   },
   publicKey: {
     type: DataTypes.TEXT,
     allowNull: false
+  },
+  // RSA private key sealed client-side with a key derived from the password
+  encryptedPrivateKey: {
+    type: DataTypes.TEXT,
+    allowNull: true
   },
   avatar: {
     type: DataTypes.STRING(500),

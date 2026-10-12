@@ -71,6 +71,12 @@ const Message = sequelize.define('Message', {
   iv: {
     type: DataTypes.STRING(255),
     allowNull: false
+  },
+  // Room key version used to encrypt this message
+  keyVersion: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1
   }
 }, {
   tableName: 'messages',

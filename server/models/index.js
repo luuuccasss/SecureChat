@@ -7,6 +7,7 @@ const MessageRecipient = require('./MessageRecipient');
 const File = require('./File');
 const BannedUser = require('./BannedUser');
 const AuditLog = require('./AuditLog');
+const RoomKey = require('./RoomKey');
 
 // Définir les associations
 User.hasMany(Room, { foreignKey: 'creatorId', as: 'createdRooms' });
@@ -78,6 +79,11 @@ AuditLog.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 Room.hasMany(AuditLog, { foreignKey: 'roomId', as: 'auditLogs' });
 AuditLog.belongsTo(Room, { foreignKey: 'roomId', as: 'room' });
 
+// Clés de room chiffrées par membre
+Room.hasMany(RoomKey, { foreignKey: 'roomId', as: 'keys' });
+RoomKey.belongsTo(Room, { foreignKey: 'roomId', as: 'room' });
+RoomKey.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 module.exports = {
   sequelize,
   User,
@@ -87,6 +93,7 @@ module.exports = {
   MessageRecipient,
   File,
   BannedUser,
-  AuditLog
+  AuditLog,
+  RoomKey
 };
 

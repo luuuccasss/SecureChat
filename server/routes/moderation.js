@@ -1,6 +1,7 @@
 const express = require('express');
 const { Room, RoomMember, BannedUser, User, Message } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { revokeMember } = require('../services/roomKeys');
 const { auditLog } = require('../middleware/audit');
 
 const router = express.Router();
@@ -88,9 +89,14 @@ router.post('/rooms/:roomId/ban/:userId', async (req, res, next) => {
     }
 
     // Retirer l'utilisateur de la room
-    await RoomMember.destroy({
+    const removed = await RoomMember.destroy({
       where: { roomId, userId }
     });
+
+    // A removed member must not be able to read what comes next
+    if (removed) {
+      await revokeMember(req.app.get('io'), room, userId);
+    }
 
     // Logger l'action
     await auditLog(req, 'ban_user', 'user', userId, {

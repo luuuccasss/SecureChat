@@ -1,4 +1,5 @@
 const { body, validationResult } = require('express-validator');
+const { AUTH_KEY_PATTERN, PUBLIC_KEY_PATTERN, SEALED_PRIVATE_KEY_PATTERN } = require('../services/roomKeys');
 
 // Middleware pour gérer les résultats de validation
 const handleValidationErrors = (req, res, next) => {
@@ -24,15 +25,18 @@ const validateRegister = [
     .trim()
     .isEmail()
     .withMessage('Email invalide')
-    .normalizeEmail(),
+    .toLowerCase(),
+  // The client never sends the password itself, only a key derived from it
+  // (password rules are checked in the browser before derivation)
   body('password')
-    .isLength({ min: 8 })
-    .withMessage('Le mot de passe doit contenir au moins 8 caractères')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Le mot de passe doit contenir au moins une majuscule, une minuscule et un chiffre'),
+    .matches(AUTH_KEY_PATTERN)
+    .withMessage('Clé d\'authentification invalide'),
   body('publicKey')
-    .notEmpty()
-    .withMessage('La clé publique est requise'),
+    .matches(PUBLIC_KEY_PATTERN)
+    .withMessage('Clé publique invalide'),
+  body('encryptedPrivateKey')
+    .matches(SEALED_PRIVATE_KEY_PATTERN)
+    .withMessage('Clé privée chiffrée invalide'),
   handleValidationErrors
 ];
 
@@ -41,10 +45,10 @@ const validateLogin = [
     .trim()
     .isEmail()
     .withMessage('Email invalide')
-    .normalizeEmail(),
+    .toLowerCase(),
   body('password')
-    .notEmpty()
-    .withMessage('Le mot de passe est requis'),
+    .matches(AUTH_KEY_PATTERN)
+    .withMessage('Clé d\'authentification invalide'),
   handleValidationErrors
 ];
 
