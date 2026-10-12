@@ -28,7 +28,6 @@ jobs:
       DB_PASSWORD: ci-root-password
       DB_NAME: securechat
       JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
-      NODE_ENV: production
       RATE_LIMIT_MAX: '100000'
       AUTH_RATE_LIMIT_MAX: '100000'
       SC_URL: http://localhost:3001
@@ -48,6 +47,8 @@ jobs:
       - name: Create the database
         run: mysql -h 127.0.0.1 -uroot -p"$DB_PASSWORD" < database/schema.sql
       - name: Start the server
+        env:
+          NODE_ENV: production
         run: |
           node index.js > server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://localhost:3001/api/health && exit 0; sleep 1; done
