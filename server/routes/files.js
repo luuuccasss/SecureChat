@@ -7,7 +7,30 @@ const { File, Room } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { fileUploadLimiter } = require('../middleware/rateLimiter');
 
+const { pipeline } = require('stream/promises');
+
 const router = express.Router();
+
+const IV_PATTERN = /^[A-Za-z0-9+/]{16}$/; // 12-byte AES-GCM IV in base64
+const CHECKSUM_PATTERN = /^[a-f0-9]{64}$/;
+
+// Keep a displayable file name: no path, no control characters, bounded length
+const sanitizeName = (name) => {
+  const base = path.basename(String(name || '')).replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, '_').trim();
+  return (base || 'file').slice(0, 200);
+};
+
+const sha256File = async (filePath) => {
+  const hash = crypto.createHash('sha256');
+  await pipeline(fs.createReadStream(filePath), hash);
+  return hash.digest('hex');
+};
+
+const removeUpload = (file) => {
+  if (file && fs.existsSync(file.path)) {
+    fs.unlink(file.path, () => {});
+  }
+};
 
 // Créer le dossier uploads s'il n'existe pas
 const uploadsDir = path.join(__dirname, '../uploads');
@@ -21,97 +44,79 @@ const storage = multer.diskStorage({
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    // Random storage name: nothing from the client ends up in the path
+    cb(null, crypto.randomBytes(16).toString('hex') + '.enc');
   }
 });
-
-// Filtre des types de fichiers autorisés
-const fileFilter = (req, file, cb) => {
-  // Les fichiers sont chiffrés côté client, donc on accepte tous les fichiers
-  // La validation du type original se fait côté client avant le chiffrement
-  // On fait confiance au client pour envoyer uniquement des types autorisés
-  cb(null, true);
-  
-  // Note: En production, on pourrait ajouter une validation supplémentaire
-  // basée sur des métadonnées ou un header personnalisé
-};
 
 const upload = multer({
   storage,
   limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024 // 10MB par défaut
-  },
-  fileFilter
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB par défaut
+    files: 1,
+    fields: 5
+  }
 });
 
 // Toutes les routes nécessitent une authentification
 router.use(authenticate);
 
-// Upload un fichier
-router.post('/upload', fileUploadLimiter, upload.single('file'), async (req, res, next) => {
+// Room checks run before multer, so nothing is written to disk for non-members
+const checkUploadRoom = async (req, res, next) => {
+  try {
+    const room = await Room.findByPk(req.query.roomId);
+    if (!room) {
+      return res.status(404).json({ error: 'Room non trouvée' });
+    }
+    const role = await room.getUserRole(req.user.id);
+    if (!role) {
+      return res.status(403).json({ error: 'Vous n\'êtes pas membre de cette room' });
+    }
+    const isModerator = role === 'owner' || role === 'admin';
+    if (!room.allowFileUpload || (room.readOnly && !isModerator)) {
+      return res.status(403).json({ error: 'L\'upload de fichiers n\'est pas autorisé dans cette room' });
+    }
+    req.room = room;
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Upload un fichier (déjà chiffré par le client) : POST /files/upload?roomId=…
+router.post('/upload', fileUploadLimiter, checkUploadRoom, upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Aucun fichier fourni' });
     }
 
-    const { roomId, iv, checksum } = req.body;
-
-    if (!roomId) {
-      // Supprimer le fichier uploadé
-      fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: 'roomId est requis' });
-    }
-
-    // Vérifier que l'utilisateur est membre de la room
-    const room = await Room.findByPk(roomId);
-    if (!room) {
-      fs.unlinkSync(req.file.path);
-      return res.status(404).json({ error: 'Room non trouvée' });
-    }
-
-    const isMember = await room.isMember(req.user.id);
-    if (!isMember) {
-      fs.unlinkSync(req.file.path);
-      return res.status(403).json({ error: 'Vous n\'êtes pas membre de cette room' });
-    }
-
-    // Vérifier les permissions d'upload
-    if (!room.allowFileUpload) {
-      fs.unlinkSync(req.file.path);
-      return res.status(403).json({ error: 'L\'upload de fichiers n\'est pas autorisé dans cette room' });
+    const { iv, checksum } = req.body;
+    if (typeof iv !== 'string' || !IV_PATTERN.test(iv)) {
+      removeUpload(req.file);
+      return res.status(400).json({ error: 'IV invalide' });
     }
 
     // Calculer le checksum du fichier chiffré reçu
-    const fileBuffer = fs.readFileSync(req.file.path);
-    const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-
-    // Vérifier le checksum si fourni
-    if (checksum && hash !== checksum) {
-      console.error('Checksum invalide:', {
-        received: checksum,
-        calculated: hash,
-        fileSize: req.file.size
-      });
-      fs.unlinkSync(req.file.path);
-      return res.status(400).json({ 
+    const hash = await sha256File(req.file.path);
+    if (checksum && (!CHECKSUM_PATTERN.test(checksum) || hash !== checksum)) {
+      removeUpload(req.file);
+      return res.status(400).json({
         error: 'Checksum invalide',
         details: 'Le fichier a peut-être été corrompu lors du transfert'
       });
     }
 
-    // Créer l'entrée en base de données
-    // Le hook beforeCreate définira automatiquement expiresAt à 30 jours
+    // The content is ciphertext: its real type is unknown to the server
     const file = await File.create({
       filename: req.file.filename,
-      originalName: req.file.originalname,
-      mimeType: req.file.mimetype,
+      originalName: sanitizeName(req.file.originalname),
+      mimeType: 'application/octet-stream',
       size: req.file.size,
       path: req.file.path,
       uploaderId: req.user.id,
-      roomId: roomId,
+      roomId: req.room.id,
       encrypted: true,
-      iv: iv || '',
+      iv,
       checksum: hash,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 jours
     });
@@ -120,7 +125,6 @@ router.post('/upload', fileUploadLimiter, upload.single('file'), async (req, res
       message: 'Fichier uploadé avec succès',
       file: {
         id: file.id,
-        filename: file.filename,
         originalName: file.originalName,
         mimeType: file.mimeType,
         size: file.size,
@@ -130,15 +134,7 @@ router.post('/upload', fileUploadLimiter, upload.single('file'), async (req, res
       }
     });
   } catch (error) {
-    // Supprimer le fichier en cas d'erreur
-    if (req.file && fs.existsSync(req.file.path)) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (unlinkError) {
-        console.error('Erreur lors de la suppression du fichier:', unlinkError);
-      }
-    }
-    console.error('Erreur upload fichier:', error);
+    removeUpload(req.file);
     next(error);
   }
 });
@@ -209,6 +205,7 @@ router.get('/room/:roomId', async (req, res, next) => {
 
     const files = await File.findAll({
       where: { roomId: req.params.roomId },
+      attributes: ['id', 'originalName', 'mimeType', 'size', 'encrypted', 'iv', 'createdAt', 'expiresAt'],
       include: [
         { model: require('../models').User, as: 'uploader', attributes: ['id', 'username'] }
       ],

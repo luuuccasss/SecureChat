@@ -67,7 +67,8 @@ export const messagesAPI = {
 
 // API des fichiers
 export const filesAPI = {
-  upload: (formData) => api.post('/files/upload', formData, {
+  upload: (roomId, formData) => api.post('/files/upload', formData, {
+    params: { roomId },
     headers: {
       'Content-Type': 'multipart/form-data',
     },

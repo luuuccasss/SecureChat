@@ -297,7 +297,6 @@ const ChatRoom = ({ room, user }) => {
       // Conserver l'extension originale pour la validation Multer
       const encryptedFileName = originalName || 'encrypted_file.bin';
       formData.append('file', encryptedBlob, encryptedFileName);
-      formData.append('roomId', room.id.toString());
       formData.append('iv', iv);
       formData.append('checksum', checksum);
       
@@ -309,7 +308,7 @@ const ChatRoom = ({ room, user }) => {
       });
 
       // Upload le fichier
-      const response = await filesAPI.upload(formData);
+      const response = await filesAPI.upload(room.id, formData);
 
       // Envoyer un message avec le fichier
       const fileMessage = `📎 ${originalName} (${(size / 1024).toFixed(2)} KB)`;
@@ -317,7 +316,6 @@ const ChatRoom = ({ room, user }) => {
 
       socketService.sendMessage(room.id, encrypted, messageIv, 'file', {
         id: response.data.file.id,
-        filename: response.data.file.filename,
         originalName: originalName,
         mimeType: mimeType,
         size: size,
