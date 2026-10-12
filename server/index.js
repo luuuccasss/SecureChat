@@ -16,6 +16,12 @@ const socketHandler = require('./socket/socketHandler');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
+
+// Number of reverse proxies in front of the app (nginx, Cloudflare...), so that
+// req.ip is the real client address and rate limits are applied per visitor.
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', parseInt(process.env.TRUST_PROXY, 10) || process.env.TRUST_PROXY);
+}
 const server = http.createServer(app);
 
 // Socket.IO configuration
@@ -42,9 +48,6 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-const { securityMiddleware } = require('./middleware/security');
-app.use(securityMiddleware);
 
 // Rate limiting
 const limiter = rateLimit({
