@@ -84,13 +84,12 @@ const Message = sequelize.define('Message', {
 // Méthode pour obtenir les données de fichier formatées
 Message.prototype.getFile = function() {
   if (!this.fileFilename && !this.fileId) return null;
+  // Server-side storage names and paths are never exposed to clients
   return {
     id: this.fileId,
-    filename: this.fileFilename,
     originalName: this.fileOriginalName,
     mimeType: this.fileMimeType,
     size: this.fileSize,
-    path: this.filePath,
     encrypted: this.fileEncrypted
   };
 };

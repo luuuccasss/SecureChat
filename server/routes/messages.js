@@ -1,8 +1,6 @@
 const express = require('express');
 const { Message, Room, MessageRecipient } = require('../models');
 const { authenticate } = require('../middleware/auth');
-const { validateMessage } = require('../middleware/validation');
-const { messageLimiter } = require('../middleware/rateLimiter');
 const { Op } = require('sequelize');
 
 const router = express.Router();
@@ -30,7 +28,11 @@ router.get('/room/:roomId', async (req, res, next) => {
     // Construire la requête
     const where = { roomId: roomId };
     if (before) {
-      where.createdAt = { [Op.lt]: new Date(before) };
+      const beforeDate = new Date(before);
+      if (Number.isNaN(beforeDate.getTime())) {
+        return res.status(400).json({ error: 'Paramètre before invalide' });
+      }
+      where.createdAt = { [Op.lt]: beforeDate };
     }
 
     const messages = await Message.findAll({
@@ -39,7 +41,7 @@ router.get('/room/:roomId', async (req, res, next) => {
         { model: require('../models').User, as: 'sender', attributes: ['id', 'username'] }
       ],
       order: [['createdAt', 'DESC']],
-      limit: parseInt(limit)
+      limit: Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100)
     });
 
     // Inverser pour avoir les plus anciens en premier
@@ -89,8 +91,8 @@ router.post('/read-multiple', async (req, res, next) => {
   try {
     const { messageIds } = req.body;
 
-    if (!Array.isArray(messageIds)) {
-      return res.status(400).json({ error: 'messageIds doit être un tableau' });
+    if (!Array.isArray(messageIds) || messageIds.length > 100 || !messageIds.every(Number.isInteger)) {
+      return res.status(400).json({ error: 'messageIds doit être un tableau de 100 identifiants au plus' });
     }
 
     await MessageRecipient.update(

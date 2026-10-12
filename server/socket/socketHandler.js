@@ -1,6 +1,25 @@
 const { authenticateSocket } = require('../middleware/auth');
 const { Room, Message, User, RoomMember, MessageRecipient } = require('../models');
 
+// Message limits: clients never choose 'system', ciphertexts and IVs have a fixed shape
+const CLIENT_MESSAGE_TYPES = ['text', 'file', 'image'];
+const MAX_CIPHERTEXT_LENGTH = 20000;
+const IV_PATTERN = /^[A-Za-z0-9+/]{16}$/; // 12-byte AES-GCM IV in base64
+
+// Flood protection: at most RATE_MAX messages per RATE_WINDOW_MS per user
+const RATE_WINDOW_MS = 10 * 1000;
+const RATE_MAX = 10;
+const sendHistory = new Map(); // userId -> timestamps of recent messages
+const lastMessageInRoom = new Map(); // `${roomId}:${userId}` -> timestamp (slow mode)
+
+const isFlooding = (userId) => {
+  const now = Date.now();
+  const recent = (sendHistory.get(userId) || []).filter(t => now - t < RATE_WINDOW_MS);
+  recent.push(now);
+  sendHistory.set(userId, recent);
+  return recent.length > RATE_MAX;
+};
+
 // Stocker les utilisateurs en ligne par room
 const roomUsers = new Map(); // roomId -> Set<userId>
 const userRooms = new Map(); // userId -> Set<roomId>
@@ -126,10 +145,19 @@ module.exports = (io) => {
     // Envoyer un message
     socket.on('send_message', async (data) => {
       try {
-        const { roomId, content, type = 'text', iv, file } = data;
+        const { roomId, content, type = 'text', iv, file } = data || {};
 
-        if (!roomId || !content || !iv) {
+        if (!roomId || typeof content !== 'string' || typeof iv !== 'string') {
           return socket.emit('error', { message: 'Données de message incomplètes' });
+        }
+        if (!CLIENT_MESSAGE_TYPES.includes(type)) {
+          return socket.emit('error', { message: 'Type de message invalide' });
+        }
+        if (content.length === 0 || content.length > MAX_CIPHERTEXT_LENGTH || !IV_PATTERN.test(iv)) {
+          return socket.emit('error', { message: 'Message invalide' });
+        }
+        if (isFlooding(socket.userId)) {
+          return socket.emit('error', { message: 'Trop de messages, veuillez ralentir' });
         }
 
         // Vérifier que l'utilisateur est membre de la room
@@ -138,47 +166,53 @@ module.exports = (io) => {
           return socket.emit('error', { message: 'Room non trouvée' });
         }
 
-        const isMember = await room.isMember(socket.userId);
-        if (!isMember) {
+        const role = await room.getUserRole(socket.userId);
+        if (!role) {
           return socket.emit('error', { message: 'Vous n\'êtes pas membre de cette room' });
+        }
+
+        // Read-only rooms and slow mode apply to regular members only
+        const isModerator = role === 'owner' || role === 'admin';
+        if (room.readOnly && !isModerator) {
+          return socket.emit('error', { message: 'Cette room est en lecture seule' });
+        }
+        if (room.slowMode > 0 && !isModerator) {
+          const key = `${room.id}:${socket.userId}`;
+          const last = lastMessageInRoom.get(key) || 0;
+          if (Date.now() - last < room.slowMode * 1000) {
+            return socket.emit('error', { message: `Mode lent : un message toutes les ${room.slowMode} secondes` });
+          }
+          lastMessageInRoom.set(key, Date.now());
         }
 
         // Obtenir tous les membres de la room
         const members = await RoomMember.findAll({
-          where: { roomId: roomId }
+          where: { roomId: room.id }
         });
 
-        // Si c'est un fichier, trouver l'ID du fichier
-        let fileId = null;
-        let fileIv = null;
-        if (file?.id || file?.filename) {
+        // File metadata always comes from the uploaded file record, never from the payload
+        let fileRecord = null;
+        if (type !== 'text') {
           const File = require('../models/File');
-          const fileRecord = await File.findOne({
-            where: file.id 
-              ? { id: file.id, roomId: roomId }
-              : { filename: file.filename, roomId: roomId }
-          });
-          if (fileRecord) {
-            fileId = fileRecord.id;
-            fileIv = fileRecord.iv;
+          fileRecord = file?.id ? await File.findOne({ where: { id: file.id, roomId: room.id } }) : null;
+          if (!fileRecord) {
+            return socket.emit('error', { message: 'Fichier introuvable' });
           }
         }
 
         // Créer le message
         const message = await Message.create({
-          roomId: roomId,
+          roomId: room.id,
           senderId: socket.userId,
           content,
           type,
           iv,
           encrypted: true,
-          fileId: fileId,
-          fileFilename: file?.filename || null,
-          fileOriginalName: file?.originalName || null,
-          fileMimeType: file?.mimeType || null,
-          fileSize: file?.size || null,
-          filePath: file?.path || null,
-          fileEncrypted: file?.encrypted !== false
+          fileId: fileRecord ? fileRecord.id : null,
+          fileOriginalName: fileRecord ? fileRecord.originalName : null,
+          fileMimeType: fileRecord ? fileRecord.mimeType : null,
+          fileSize: fileRecord ? fileRecord.size : null,
+          fileEncrypted: true
         });
 
         // Créer les destinataires
@@ -212,10 +246,7 @@ module.exports = (io) => {
             content: message.content,
             type: message.type,
             iv: message.iv,
-            file: {
-              ...message.getFile(),
-              iv: fileIv || message.getFile()?.iv
-            },
+            file: fileRecord ? { ...message.getFile(), iv: fileRecord.iv } : null,
             encrypted: message.encrypted,
             createdAt: message.createdAt
           }

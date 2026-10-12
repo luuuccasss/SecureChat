@@ -32,7 +32,8 @@ const io = new Server(server, {
     credentials: true
   },
   pingTimeout: parseInt(process.env.SOCKET_PING_TIMEOUT) || 60000, // 60 seconds
-  pingInterval: parseInt(process.env.SOCKET_PING_INTERVAL) || 25000  // 25 seconds
+  pingInterval: parseInt(process.env.SOCKET_PING_INTERVAL) || 25000, // 25 seconds
+  maxHttpBufferSize: 64 * 1024 // a message is at most ~20 KB of ciphertext
 });
 
 // Security middleware
@@ -46,8 +47,9 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Messages go through Socket.IO and files through multipart, so JSON bodies stay small
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
 // Rate limiting
 const limiter = rateLimit({
