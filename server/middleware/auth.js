@@ -2,6 +2,24 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 
+const JWT_OPTIONS = { algorithms: ['HS256'] };
+
+const signToken = (user) => jwt.sign(
+  { userId: user.id, tv: user.tokenVersion },
+  process.env.JWT_SECRET,
+  { algorithm: 'HS256', expiresIn: process.env.JWT_EXPIRES_IN || '12h' }
+);
+
+// Verifies the signature and that the token was not revoked by a logout
+const verifyToken = async (token) => {
+  const decoded = jwt.verify(token, process.env.JWT_SECRET, JWT_OPTIONS);
+  const user = await User.findByPk(decoded.userId, {
+    attributes: { exclude: ['password'] }
+  });
+  if (!user || decoded.tv !== user.tokenVersion) return null;
+  return user;
+};
+
 // HTTP request authentication
 const authenticate = async (req, res, next) => {
   try {
@@ -11,13 +29,9 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ error: 'Authentication token missing' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findByPk(decoded.userId, {
-      attributes: { exclude: ['password'] }
-    });
-    
+    const user = await verifyToken(token);
     if (!user) {
-      return res.status(401).json({ error: 'User not found' });
+      return res.status(401).json({ error: 'Invalid token' });
     }
 
     req.user = user;
@@ -43,13 +57,9 @@ const authenticateSocket = async (socket, next) => {
       return next(new Error('Authentication token missing'));
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findByPk(decoded.userId, {
-      attributes: { exclude: ['password'] }
-    });
-    
+    const user = await verifyToken(token);
     if (!user) {
-      return next(new Error('User not found'));
+      return next(new Error('Authentication failed'));
     }
 
     socket.userId = user.id.toString();
@@ -60,4 +70,4 @@ const authenticateSocket = async (socket, next) => {
   }
 };
 
-module.exports = { authenticate, authenticateSocket };
+module.exports = { authenticate, authenticateSocket, signToken };

@@ -1,12 +1,16 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const { User } = require('../models');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, signToken } = require('../middleware/auth');
 const { validateRegister, validateLogin } = require('../middleware/validation');
 const { authLimiter } = require('../middleware/rateLimiter');
 const { Op } = require('sequelize');
 
 const router = express.Router();
+
+// Compared against when the email is unknown, so that response times do not
+// reveal which emails have an account
+const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 12);
 
 // Inscription
 router.post('/register', authLimiter, validateRegister, async (req, res, next) => {
@@ -37,11 +41,7 @@ router.post('/register', authLimiter, validateRegister, async (req, res, next) =
     });
 
     // Générer le token JWT
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
+    const token = signToken(user);
 
     res.status(201).json({
       message: 'Inscription réussie',
@@ -70,6 +70,7 @@ router.post('/login', authLimiter, validateLogin, async (req, res, next) => {
     });
 
     if (!user) {
+      await bcrypt.compare(password, DUMMY_HASH);
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
 
@@ -86,11 +87,7 @@ router.post('/login', authLimiter, validateLogin, async (req, res, next) => {
     await user.save();
 
     // Générer le token JWT
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
+    const token = signToken(user);
 
     res.json({
       message: 'Connexion réussie',
@@ -128,6 +125,7 @@ router.post('/logout', authenticate, async (req, res, next) => {
     if (user) {
       user.isOnline = false;
       user.lastSeen = new Date();
+      user.tokenVersion += 1; // revokes every token issued so far
       await user.save();
     }
 
@@ -138,7 +136,7 @@ router.post('/logout', authenticate, async (req, res, next) => {
 });
 
 // Obtenir les informations publiques d'un utilisateur (pour l'échange de clés)
-router.get('/user/:userId/public', async (req, res, next) => {
+router.get('/user/:userId/public', authenticate, async (req, res, next) => {
   try {
     const user = await User.findByPk(req.params.userId, {
       attributes: ['id', 'username', 'publicKey']

@@ -3,8 +3,8 @@ const { Sequelize } = require('sequelize');
 
 const sequelize = new Sequelize(
   process.env.DB_NAME || 'securechat',           // Database name
-  process.env.DB_USER || 'root',                 // Database user
-  process.env.DB_PASSWORD || '',                 // Database password
+  process.env.DB_USER,                           // Database user (required)
+  process.env.DB_PASSWORD,                       // Database password (required)
   {
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 3306,

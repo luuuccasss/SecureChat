@@ -78,15 +78,16 @@ app.get('/api/health', (req, res) => {
 
 app.use(errorHandler);
 
-// Check required environment variables
-if (!process.env.JWT_SECRET) {
-  console.error('❌ ERROR: JWT_SECRET is not defined in environment variables');
-  console.error('📝 Create a server/.env file with at minimum:');
-  console.error('   JWT_SECRET=your-jwt-secret-minimum-32-characters');
-  console.error('   DB_NAME=securechat');
-  console.error('   DB_USER=root');
-  console.error('   DB_PASSWORD=your-database-password');
-  console.error('\n💡 Copy server/.env.example to server/.env and fill in your values');
+// Refuse to start with a missing, short or example JWT secret: anyone who knows
+// it can forge a token for any account
+const EXAMPLE_SECRET = 'your-super-secret-jwt-key-minimum-32-characters-long';
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32 || process.env.JWT_SECRET === EXAMPLE_SECRET) {
+  console.error('❌ ERROR: JWT_SECRET must be set to a random value of at least 32 characters');
+  console.error('   Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'base64\'))"');
+  process.exit(1);
+}
+if (!process.env.DB_USER || !process.env.DB_PASSWORD) {
+  console.error('❌ ERROR: DB_USER and DB_PASSWORD must be set in server/.env');
   process.exit(1);
 }
 

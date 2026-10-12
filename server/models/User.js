@@ -48,6 +48,12 @@ const User = sequelize.define('User', {
   lastSeen: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
+  },
+  // Bumped on logout: every token issued before is rejected
+  tokenVersion: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
   }
 }, {
   tableName: 'users',
