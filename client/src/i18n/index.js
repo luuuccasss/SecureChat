@@ -99,10 +99,12 @@ export const useTranslation = () => {
   };
 };
 
-export default {
+const i18n = {
   t,
   setLanguage,
   getLanguage,
   useTranslation
 };
+
+export default i18n;
 
