@@ -32,13 +32,28 @@ const errorHandler = (err, req, res, next) => {
     return res.status(401).json({ error: 'Token expiré' });
   }
 
-  // Erreur par défaut
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Erreur serveur interne';
+  // Upload errors (multer, malformed multipart) are client errors
+  if (err.name === 'MulterError') {
+    const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    return res.status(status).json({ error: 'Fichier refusé', code: err.code });
+  }
+  if (/multipart|part header|boundary/i.test(err.message || '')) {
+    return res.status(400).json({ error: 'Requête multipart invalide' });
+  }
+
+  // Body parser errors (invalid JSON, body too large) carry their own status
+  if (err.type === 'entity.parse.failed' || err.type === 'entity.too.large') {
+    return res.status(err.status).json({ error: err.type === 'entity.too.large' ? 'Requête trop volumineuse' : 'JSON invalide' });
+  }
+
+  // Erreur par défaut : en production, aucun détail interne ne sort du serveur
+  const statusCode = err.statusCode || err.status || 500;
+  const isDev = process.env.NODE_ENV === 'development';
+  const message = statusCode < 500 || isDev ? (err.message || 'Erreur') : 'Erreur serveur interne';
 
   res.status(statusCode).json({
     error: message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    ...(isDev && { stack: err.stack })
   });
 };
 
