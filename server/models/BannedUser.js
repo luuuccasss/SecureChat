@@ -50,5 +50,20 @@ const BannedUser = sequelize.define('BannedUser', {
   ]
 });
 
+// Active ban for this user in this room (permanent or not yet expired), or null
+BannedUser.findActive = function(roomId, userId) {
+  const { Op } = require('sequelize');
+  return BannedUser.findOne({
+    where: {
+      roomId,
+      userId,
+      [Op.or]: [
+        { expiresAt: null },
+        { expiresAt: { [Op.gt]: new Date() } }
+      ]
+    }
+  });
+};
+
 module.exports = BannedUser;
 

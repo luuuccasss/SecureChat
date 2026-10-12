@@ -128,4 +128,8 @@ Room.prototype.hasPermission = async function(userId, permission) {
   return false;
 };
 
+// Role hierarchy used by moderation: a moderator can only act on lower roles
+Room.ROLE_RANK = { owner: 3, admin: 2, member: 1 };
+Room.roleRank = (role) => Room.ROLE_RANK[role] || 0;
+
 module.exports = Room;

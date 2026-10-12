@@ -1,5 +1,5 @@
 const express = require('express');
-const { Room, RoomMember, User } = require('../models');
+const { Room, RoomMember, User, BannedUser } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { validateCreateRoom } = require('../middleware/validation');
 const bcrypt = require('bcryptjs');
@@ -237,6 +237,11 @@ router.post('/:roomId/join', async (req, res, next) => {
     const isMember = await room.isMember(req.user.id);
     if (isMember) {
       return res.status(400).json({ error: 'Vous êtes déjà membre de cette room' });
+    }
+
+    // Banned users cannot come back until the ban expires or is lifted
+    if (await BannedUser.findActive(room.id, req.user.id)) {
+      return res.status(403).json({ error: 'Vous êtes banni de cette room' });
     }
 
     // Vérifier le mot de passe si la room est privée

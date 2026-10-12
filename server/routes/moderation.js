@@ -2,7 +2,6 @@ const express = require('express');
 const { Room, RoomMember, BannedUser, User, Message } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { auditLog } = require('../middleware/audit');
-const { Op } = require('sequelize');
 
 const router = express.Router();
 
@@ -13,19 +12,21 @@ router.use(authenticate);
 router.get('/rooms/:roomId/banned/:userId', async (req, res, next) => {
   try {
     const { roomId, userId } = req.params;
+    const room = await Room.findByPk(roomId);
+    if (!room) {
+      return res.status(404).json({ error: 'Room non trouvée' });
+    }
 
-    const ban = await BannedUser.findOne({
-      where: {
-        roomId,
-        userId,
-        [Op.or]: [
-          { expiresAt: null },
-          { expiresAt: { [Op.gt]: new Date() } }
-        ]
-      }
-    });
+    // Only the user concerned or the room moderators may look up a ban
+    const isSelf = String(userId) === String(req.user.id);
+    const role = await room.getUserRole(req.user.id);
+    const isModerator = role === 'owner' || role === 'admin';
+    if (!isSelf && !isModerator) {
+      return res.status(403).json({ error: 'Permissions insuffisantes' });
+    }
 
-    res.json({ banned: !!ban, ban: ban || null });
+    const ban = await BannedUser.findActive(roomId, userId);
+    res.json(isModerator ? { banned: !!ban, ban: ban || null } : { banned: !!ban });
   } catch (error) {
     next(error);
   }
@@ -48,11 +49,24 @@ router.post('/rooms/:roomId/ban/:userId', async (req, res, next) => {
       return res.status(403).json({ error: 'Permissions insuffisantes' });
     }
 
-    // Vérifier que l'utilisateur à bannir n'est pas owner
-    const targetRole = await room.getUserRole(userId);
-    if (targetRole === 'owner') {
-      return res.status(403).json({ error: 'Impossible de bannir le propriétaire' });
+    if (String(userId) === String(req.user.id)) {
+      return res.status(400).json({ error: 'Impossible de se bannir soi-même' });
     }
+
+    // A moderator can only ban users strictly below their own role
+    const targetRole = await room.getUserRole(userId);
+    if (Room.roleRank(targetRole) >= Room.roleRank(role)) {
+      return res.status(403).json({ error: 'Impossible de bannir un membre de rang égal ou supérieur' });
+    }
+
+    let expiry = null;
+    if (expiresAt) {
+      expiry = new Date(expiresAt);
+      if (Number.isNaN(expiry.getTime()) || expiry <= new Date()) {
+        return res.status(400).json({ error: 'Date d\'expiration invalide' });
+      }
+    }
+    const cleanReason = typeof reason === 'string' ? reason.slice(0, 500) : null;
 
     // Créer ou mettre à jour le bannissement
     const [ban, created] = await BannedUser.findOrCreate({
@@ -61,15 +75,15 @@ router.post('/rooms/:roomId/ban/:userId', async (req, res, next) => {
         roomId,
         userId,
         bannedBy: req.user.id,
-        reason: reason || null,
-        expiresAt: expiresAt ? new Date(expiresAt) : null
+        reason: cleanReason,
+        expiresAt: expiry
       }
     });
 
     if (!created) {
       ban.bannedBy = req.user.id;
-      ban.reason = reason || ban.reason;
-      ban.expiresAt = expiresAt ? new Date(expiresAt) : ban.expiresAt;
+      ban.reason = cleanReason || ban.reason;
+      ban.expiresAt = expiry;
       await ban.save();
     }
 
@@ -81,8 +95,8 @@ router.post('/rooms/:roomId/ban/:userId', async (req, res, next) => {
     // Logger l'action
     await auditLog(req, 'ban_user', 'user', userId, {
       roomId,
-      reason,
-      expiresAt
+      reason: cleanReason,
+      expiresAt: expiry
     });
 
     res.json({ message: 'Utilisateur banni avec succès', ban });
@@ -107,9 +121,17 @@ router.delete('/rooms/:roomId/ban/:userId', async (req, res, next) => {
       return res.status(403).json({ error: 'Permissions insuffisantes' });
     }
 
-    await BannedUser.destroy({
-      where: { roomId, userId }
-    });
+    const ban = await BannedUser.findOne({ where: { roomId, userId } });
+    if (!ban) {
+      return res.status(404).json({ error: 'Aucun bannissement trouvé' });
+    }
+
+    // Admins can only lift the bans they issued themselves
+    if (role !== 'owner' && String(ban.bannedBy) !== String(req.user.id)) {
+      return res.status(403).json({ error: 'Seul le propriétaire ou l\'auteur du bannissement peut le lever' });
+    }
+
+    await ban.destroy();
 
     // Logger l'action
     await auditLog(req, 'unban_user', 'user', userId, { roomId });
@@ -133,9 +155,11 @@ router.delete('/messages/:messageId', async (req, res, next) => {
 
     // Vérifier les permissions
     const role = await message.room.getUserRole(req.user.id);
-    const canDelete = role === 'owner' || 
-                      role === 'admin' || 
-                      (message.senderId === req.user.id);
+    // Authors can delete their own messages only while they are still members,
+    // so a banned user cannot wipe the evidence
+    const canDelete = role === 'owner' ||
+                      role === 'admin' ||
+                      (role !== null && message.senderId === req.user.id);
 
     if (!canDelete) {
       return res.status(403).json({ error: 'Permissions insuffisantes' });
@@ -161,7 +185,8 @@ router.patch('/rooms/:roomId/members/:userId/role', async (req, res, next) => {
     const { roomId, userId } = req.params;
     const { role } = req.body;
 
-    if (!['owner', 'admin', 'member'].includes(role)) {
+    // Ownership cannot be shared: there is exactly one owner, the creator
+    if (!['admin', 'member'].includes(role)) {
       return res.status(400).json({ error: 'Rôle invalide' });
     }
 
@@ -189,6 +214,7 @@ router.patch('/rooms/:roomId/members/:userId/role', async (req, res, next) => {
       return res.status(404).json({ error: 'Membre non trouvé' });
     }
 
+    const oldRole = member.role;
     member.role = role;
     await member.save();
 
@@ -196,7 +222,7 @@ router.patch('/rooms/:roomId/members/:userId/role', async (req, res, next) => {
     await auditLog(req, 'change_role', 'user', userId, {
       roomId,
       newRole: role,
-      oldRole: member.previous('role')
+      oldRole
     });
 
     res.json({ message: 'Rôle modifié avec succès', member });
@@ -225,8 +251,8 @@ router.get('/rooms/:roomId/audit-logs', async (req, res, next) => {
     const { AuditLog } = require('../models');
     const logs = await AuditLog.findAll({
       where: { roomId },
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit: Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100),
+      offset: Math.max(parseInt(offset, 10) || 0, 0),
       order: [['createdAt', 'DESC']],
       include: [
         { model: User, as: 'user', attributes: ['id', 'username'] }
