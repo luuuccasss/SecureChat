@@ -95,6 +95,7 @@ if (!process.env.DB_USER || !process.env.DB_PASSWORD) {
 connectDB()
   .then(() => {
     socketHandler(io);
+    require('./utils/cleanup').scheduleCleanup();
     
     const PORT = process.env.PORT || 3001;
     server.listen(PORT, () => {
