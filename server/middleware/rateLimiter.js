@@ -12,7 +12,7 @@ const generalLimiter = rateLimit({
 // Rate limiter strict pour l'authentification
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 tentatives de connexion
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 5, // 5 tentatives échouées
   message: 'Trop de tentatives de connexion, veuillez réessayer dans 15 minutes.',
   skipSuccessfulRequests: true,
 });
