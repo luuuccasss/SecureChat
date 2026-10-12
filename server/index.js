@@ -37,10 +37,8 @@ const io = new Server(server, {
 });
 
 // Security middleware
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
+// The API only serves JSON and encrypted blobs: Helmet's strict defaults apply
+app.use(helmet());
 
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
