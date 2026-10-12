@@ -21,28 +21,5 @@ const auditLog = async (req, action, entityType, entityId, details = {}) => {
   }
 };
 
-/**
- * Middleware pour logger automatiquement certaines actions
- */
-const auditMiddleware = (action, entityType) => {
-  return async (req, res, next) => {
-    // Logger après la réponse
-    const originalSend = res.send;
-    res.send = function(data) {
-      if (res.statusCode < 400) {
-        // Logger seulement les succès
-        const entityId = req.params.id || req.params.roomId || req.params.messageId || req.params.fileId;
-        auditLog(req, action, entityType, entityId, {
-          method: req.method,
-          path: req.path,
-          body: req.body
-        });
-      }
-      return originalSend.call(this, data);
-    };
-    next();
-  };
-};
-
-module.exports = { auditLog, auditMiddleware };
+module.exports = { auditLog };
 
