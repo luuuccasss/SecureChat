@@ -1,424 +1,104 @@
-# Guide de Déploiement - ChatSecure
+# Deployment
 
-## Prérequis
+SecureChat is a Node.js API (Express + Socket.IO + MySQL) and a static React app.
 
-- Node.js 18+ et npm
-- MongoDB 5.0+
-- Git
+## Requirements
 
-## Installation Locale
+- Node.js 20+
+- MySQL 8
+- HTTPS in production: the Web Crypto API only works in a secure context
 
-### 1. Cloner le projet
+## 1. Database
 
-```bash
-git clone <repository-url>
-cd ChatSecure
+```sql
+CREATE USER 'securechat'@'localhost' IDENTIFIED BY 'a-strong-password';
+GRANT ALL PRIVILEGES ON securechat.* TO 'securechat'@'localhost';
 ```
 
-### 2. Installer les dépendances
-
-```bash
-# Installer toutes les dépendances (root, server, client)
-npm run install:all
+```sh
+mysql -u root -p < server/database/schema.sql
 ```
 
-### 3. Configurer MongoDB
+Upgrading an existing install: run the files in `server/database/migrations/` in order.
+`002_e2ee_v2.sql` removes data written by 1.x clients, which was never actually encrypted,
+and accounts created before 2.0 have to register again.
 
-```bash
-# Démarrer MongoDB (selon votre installation)
-mongod
+## 2. Server
 
-# Ou avec Docker
-docker run -d -p 27017:27017 --name mongodb mongo:latest
+```sh
+cd server
+npm ci --omit=dev
+cp .env.example .env
 ```
 
-### 4. Configurer les variables d'environnement
+Required in `server/.env`:
 
-```bash
-# Copier le fichier d'exemple
-cp server/.env.example server/.env
+| Variable | Value |
+|---|---|
+| `JWT_SECRET` | random, 32+ characters: `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"` |
+| `DB_USER`, `DB_PASSWORD` | the dedicated MySQL user |
+| `CORS_ORIGIN` | public URL of the web app, e.g. `https://chat.example.com` |
+| `TRUST_PROXY` | `1` behind one reverse proxy (nginx), empty otherwise |
 
-# Éditer server/.env
-nano server/.env
-```
+Start it with `node index.js` under a process manager (systemd, PM2, Docker...).
+Expired and orphaned uploads are cleaned up automatically every 6 hours.
 
-Variables minimales :
-```env
-PORT=3001
-MONGODB_URI=mongodb://localhost:27017/s25_testchat
-JWT_SECRET=votre-secret-jwt-min-32-caracteres
-CORS_ORIGIN=http://localhost:3000
-```
+## 3. Web app
 
-### 5. Démarrer l'application
+The API URLs are compiled into the app and define its Content-Security-Policy:
 
-```bash
-# Développement (backend + frontend)
-npm run dev
-
-# Ou séparément
-npm run dev:server  # Terminal 1
-npm run dev:client  # Terminal 2
-```
-
-L'application sera accessible sur :
-- Frontend : http://localhost:3000
-- Backend : http://localhost:3001
-
-## Déploiement Production
-
-### Option 1 : Déploiement avec PM2
-
-#### 1. Installer PM2
-
-```bash
-npm install -g pm2
-```
-
-#### 2. Build du frontend
-
-```bash
+```sh
 cd client
+npm ci
+REACT_APP_API_URL=https://chat.example.com/api \
+REACT_APP_SOCKET_URL=https://chat.example.com \
 npm run build
-cd ..
 ```
 
-#### 3. Configurer PM2
+Serve `client/build/` as static files, with every unknown path falling back to `index.html`.
 
-Créer `ecosystem.config.js` :
-
-```javascript
-module.exports = {
-  apps: [{
-    name: 's25_testchat-server',
-    script: './server/index.js',
-    instances: 2,
-    exec_mode: 'cluster',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3001
-    },
-    error_file: './logs/err.log',
-    out_file: './logs/out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
-  }]
-};
-```
-
-#### 4. Démarrer avec PM2
-
-```bash
-pm2 start ecosystem.config.js
-pm2 save
-pm2 startup
-```
-
-### Option 2 : Déploiement avec Docker
-
-#### 1. Créer Dockerfile
-
-`Dockerfile` :
-```dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-
-# Copier les fichiers de dépendances
-COPY package*.json ./
-COPY server/package*.json ./server/
-COPY client/package*.json ./client/
-
-# Installer les dépendances
-RUN npm install
-RUN cd server && npm install
-RUN cd client && npm install && npm run build
-
-# Copier le code
-COPY . .
-
-# Exposer le port
-EXPOSE 3001
-
-# Démarrer
-CMD ["node", "server/index.js"]
-```
-
-#### 2. Créer docker-compose.yml
-
-```yaml
-version: '3.8'
-
-services:
-  mongodb:
-    image: mongo:latest
-    volumes:
-      - mongodb_data:/data/db
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: strong-password
-    ports:
-      - "27017:27017"
-
-  app:
-    build: .
-    ports:
-      - "3001:3001"
-    environment:
-      - NODE_ENV=production
-      - MONGODB_URI=mongodb://admin:strong-password@mongodb:27017/s25_testchat?authSource=admin
-      - JWT_SECRET=${JWT_SECRET}
-      - CORS_ORIGIN=${CORS_ORIGIN}
-    depends_on:
-      - mongodb
-
-volumes:
-  mongodb_data:
-```
-
-#### 3. Démarrer
-
-```bash
-docker-compose up -d
-```
-
-### Option 3 : Déploiement Cloud (Heroku, Railway, etc.)
-
-#### Heroku
-
-```bash
-# Installer Heroku CLI
-heroku login
-
-# Créer l'application
-heroku create s25_testchat-app
-
-# Ajouter MongoDB (MongoDB Atlas ou Heroku addon)
-heroku addons:create mongolab:sandbox
-
-# Configurer les variables
-heroku config:set JWT_SECRET=your-secret
-heroku config:set CORS_ORIGIN=https://your-app.herokuapp.com
-
-# Déployer
-git push heroku main
-```
-
-#### Railway
-
-1. Connecter le repository GitHub
-2. Configurer les variables d'environnement
-3. Déployer automatiquement
-
-## Configuration Nginx (Reverse Proxy)
-
-### Installation
-
-```bash
-sudo apt update
-sudo apt install nginx
-```
-
-### Configuration
-
-`/etc/nginx/sites-available/s25_testchat` :
+## 4. Reverse proxy (nginx)
 
 ```nginx
 server {
-    listen 80;
-    server_name votre-domaine.com;
-    return 301 https://$server_name$request_uri;
-}
+  listen 443 ssl http2;
+  server_name chat.example.com;
+  # ssl_certificate ... (Let's Encrypt)
 
-server {
-    listen 443 ssl http2;
-    server_name votre-domaine.com;
+  root /var/www/securechat/client/build;
+  add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+  add_header X-Content-Type-Options nosniff always;
+  add_header X-Frame-Options DENY always;
+  add_header Referrer-Policy no-referrer always;
 
-    ssl_certificate /etc/letsencrypt/live/votre-domaine.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/votre-domaine.com/privkey.pem;
-    
-    # SSL Configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
+  location / {
+    try_files $uri /index.html;
+  }
 
-    # Headers de sécurité
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "DENY" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+  location /api/ {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 11m;
+  }
 
-    # Frontend (React build)
-    location / {
-        root /var/www/s25_testchat/client/build;
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Backend API
-    location /api {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    # Socket.IO
-    location /socket.io {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+  location /socket.io/ {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
 }
 ```
 
-### Activer le site
+## 5. Tests
 
-```bash
-sudo ln -s /etc/nginx/sites-available/s25_testchat /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
+The test suite runs against a live server and database, like in CI. The end-to-end
+encryption tests also read the database, so they need the same `DB_*` variables:
+
+```sh
+cd server
+RATE_LIMIT_MAX=100000 AUTH_RATE_LIMIT_MAX=100000 node index.js &
+SC_URL=http://localhost:3001 DB_USER=securechat DB_PASSWORD=... npm test
 ```
-
-## Certificat SSL (Let's Encrypt)
-
-```bash
-# Installer Certbot
-sudo apt install certbot python3-certbot-nginx
-
-# Obtenir le certificat
-sudo certbot --nginx -d votre-domaine.com
-
-# Renouvellement automatique
-sudo certbot renew --dry-run
-```
-
-## MongoDB Atlas (Cloud)
-
-### Configuration
-
-1. Créer un cluster sur [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
-2. Créer un utilisateur avec permissions
-3. Whitelist l'IP du serveur
-4. Obtenir la connection string
-
-```env
-MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/s25_testchat?retryWrites=true&w=majority
-```
-
-## Monitoring
-
-### PM2 Monitoring
-
-```bash
-pm2 monit
-pm2 logs
-```
-
-### Logs
-
-```bash
-# Logs applicatifs
-tail -f logs/app.log
-
-# Logs Nginx
-tail -f /var/log/nginx/access.log
-tail -f /var/log/nginx/error.log
-```
-
-### Health Check
-
-```bash
-# Endpoint de santé
-curl http://localhost:3001/api/health
-```
-
-## Backup
-
-### MongoDB Backup
-
-```bash
-# Backup manuel
-mongodump --uri="mongodb://localhost:27017/s25_testchat" --out=/backup/$(date +%Y%m%d)
-
-# Restore
-mongorestore --uri="mongodb://localhost:27017/s25_testchat" /backup/20240101
-```
-
-### Backup automatique (cron)
-
-```bash
-# Éditer crontab
-crontab -e
-
-# Backup quotidien à 2h du matin
-0 2 * * * mongodump --uri="mongodb://localhost:27017/s25_testchat" --out=/backup/$(date +\%Y\%m\%d)
-```
-
-## Mise à jour
-
-```bash
-# Pull les dernières modifications
-git pull origin main
-
-# Installer les nouvelles dépendances
-npm run install:all
-
-# Rebuild
-cd client && npm run build && cd ..
-
-# Redémarrer
-pm2 restart s25_testchat-server
-# Ou
-docker-compose restart
-```
-
-## Troubleshooting
-
-### Port déjà utilisé
-
-```bash
-# Trouver le processus
-lsof -i :3001
-
-# Tuer le processus
-kill -9 <PID>
-```
-
-### MongoDB ne démarre pas
-
-```bash
-# Vérifier les logs
-tail -f /var/log/mongodb/mongod.log
-
-# Vérifier les permissions
-sudo chown -R mongodb:mongodb /var/lib/mongodb
-```
-
-### Erreurs de connexion Socket.IO
-
-- Vérifier CORS_ORIGIN
-- Vérifier les headers proxy
-- Vérifier les certificats SSL
-
-## Checklist Production
-
-- [ ] HTTPS configuré et fonctionnel
-- [ ] Variables d'environnement configurées
-- [ ] MongoDB sécurisé avec authentification
-- [ ] Firewall configuré
-- [ ] Backups automatiques configurés
-- [ ] Monitoring en place
-- [ ] Logs configurés
-- [ ] Rate limiting activé
-- [ ] Tests effectués
-- [ ] Documentation à jour
-
