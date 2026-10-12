@@ -1,7 +1,7 @@
 const express = require('express');
 const { Room, RoomMember, User, BannedUser, RoomKey } = require('../models');
 const { sequelize } = require('../config/database');
-const { isWrappedKey, hasKey, versionHasKeys, revokeMember } = require('../services/roomKeys');
+const { isWrappedKey, hasKey, versionHasKeys, revokeMember, requestKeyFor } = require('../services/roomKeys');
 const { authenticate } = require('../middleware/auth');
 const { validateCreateRoom } = require('../middleware/validation');
 const bcrypt = require('bcryptjs');
@@ -279,7 +279,7 @@ router.post('/:roomId/join', async (req, res, next) => {
     });
 
     // Online members wrap the current room key for the newcomer
-    req.app.get('io')?.to(String(room.id)).emit('room_key_needed', { roomId: room.id, userId: req.user.id });
+    await requestKeyFor(req.app.get('io'), room.id, req.user.id);
 
     // Recharger avec les relations
     await room.reload({

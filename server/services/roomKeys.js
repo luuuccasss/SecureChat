@@ -1,7 +1,7 @@
 // Server side of end-to-end encryption: the server stores and routes opaque,
 // per-member wrapped room keys. It never sees a password, a private key or a
 // room key in clear.
-const { RoomKey } = require('../models');
+const { RoomKey, RoomMember } = require('../models');
 
 // Shapes of the client-generated material (protocol v2)
 const AUTH_KEY_PATTERN = /^[A-Za-z0-9+/]{43}=$/; // 32 bytes, HKDF output
@@ -28,7 +28,20 @@ async function revokeMember(io, room, userId) {
   }
 }
 
+// Asks every other member (on their personal channel, whatever room they are
+// looking at) to wrap the current room key for this user
+async function requestKeyFor(io, roomId, userId) {
+  if (!io) return;
+  const members = await RoomMember.findAll({ where: { roomId }, attributes: ['userId'] });
+  for (const member of members) {
+    if (member.userId !== Number(userId)) {
+      io.to(`user:${member.userId}`).emit('room_key_needed', { roomId: Number(roomId), userId: Number(userId) });
+    }
+  }
+}
+
 module.exports = {
+  requestKeyFor,
   AUTH_KEY_PATTERN,
   PUBLIC_KEY_PATTERN,
   SEALED_PRIVATE_KEY_PATTERN,

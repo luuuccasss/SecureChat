@@ -1,6 +1,6 @@
 const { authenticateSocket } = require('../middleware/auth');
 const { Room, Message, User, RoomMember, MessageRecipient } = require('../models');
-const { hasKey, versionHasKeys } = require('../services/roomKeys');
+const { hasKey, versionHasKeys, requestKeyFor } = require('../services/roomKeys');
 
 // Message limits: clients never choose 'system', ciphertexts and IVs have a fixed shape
 const CLIENT_MESSAGE_TYPES = ['text', 'file', 'image'];
@@ -286,7 +286,7 @@ module.exports = (io) => {
         if (!room || !(await room.isMember(socket.userId))) return;
         if (await hasKey(room.id, socket.userId, room.keyVersion)) return;
         if (!(await versionHasKeys(room.id, room.keyVersion))) return; // a rotation is needed instead
-        socket.to(String(room.id)).emit('room_key_needed', { roomId: room.id, userId: Number(socket.userId) });
+        await requestKeyFor(io, room.id, socket.userId);
       } catch (error) {
         console.error('Erreur request_room_key:', error);
       }
