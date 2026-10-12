@@ -69,3 +69,22 @@ function next(socket, event, ms = 1500) {
 }
 
 module.exports = { api, register, createRoom, connect, next, unique };
+
+// Loads the browser E2EE module (client/src/crypto/e2ee.js) in Node: it is plain
+// ES module code with no imports, so a copy with an .mjs extension is enough
+let e2eePromise = null;
+function loadE2EE() {
+  if (!e2eePromise) {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { pathToFileURL } = require('url');
+    const source = path.join(__dirname, '../../client/src/crypto/e2ee.js');
+    const copy = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'e2ee-')), 'e2ee.mjs');
+    fs.copyFileSync(source, copy);
+    e2eePromise = import(pathToFileURL(copy).href);
+  }
+  return e2eePromise;
+}
+
+module.exports.loadE2EE = loadE2EE;
