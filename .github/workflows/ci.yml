@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Server tests
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-root-password"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_USER: root
+      DB_PASSWORD: ci-root-password
+      DB_NAME: securechat
+      JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+      NODE_ENV: production
+      RATE_LIMIT_MAX: '100000'
+      AUTH_RATE_LIMIT_MAX: '100000'
+      SC_URL: http://localhost:3001
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Create the database
+        run: mysql -h 127.0.0.1 -uroot -p"$DB_PASSWORD" < database/schema.sql
+      - name: Start the server
+        run: |
+          node index.js > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3001/api/health && exit 0; sleep 1; done
+          cat server.log; exit 1
+      - name: Run the test suite
+        run: npm test
+      - name: Server log
+        if: failure()
+        run: cat server.log
+
+  client:
+    name: Client build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - name: Build (lint warnings fail the build)
+        run: npm run build
+        env:
+          CI: true
