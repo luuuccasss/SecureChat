@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authAPI } from '../../services/api';
-import cryptoService from '../../crypto/cryptoService';
+import cryptoSession from '../../crypto/session';
 import { useTranslation } from '../../i18n';
 
 const Register = ({ onLogin }) => {
@@ -15,24 +14,6 @@ const Register = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [errorDetails, setErrorDetails] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [generatingKeys, setGeneratingKeys] = useState(false);
-
-  useEffect(() => {
-    // Générer les clés au chargement du composant
-    generateKeys();
-  }, []);
-
-  const generateKeys = async () => {
-    try {
-      setGeneratingKeys(true);
-      await cryptoService.generateKeyPair();
-      setGeneratingKeys(false);
-    } catch (err) {
-      console.error('Erreur lors de la génération des clés:', err);
-      setError('Erreur lors de la génération des clés de chiffrement');
-      setGeneratingKeys(false);
-    }
-  };
 
   const handleChange = (e) => {
     setFormData({
@@ -46,41 +27,26 @@ const Register = ({ onLogin }) => {
     setError('');
     setErrorDetails([]);
 
-    // Validation
+    // The server never sees the password, so its rules are enforced here
     if (formData.password !== formData.confirmPassword) {
-      setError(t('errors.validation'));
+      setError(t('auth.passwordMismatch'));
       return;
     }
-
-    if (formData.password.length < 8) {
-      setError(t('errors.validation'));
-      return;
-    }
-
-    if (!cryptoService.getPublicKey()) {
-      setError(t('common.loading'));
+    if (formData.password.length < 10 || !/[a-z]/.test(formData.password) ||
+        !/[A-Z]/.test(formData.password) || !/\d/.test(formData.password)) {
+      setError(t('auth.passwordRules'));
       return;
     }
 
     setLoading(true);
 
     try {
-      const publicKey = cryptoService.getPublicKey();
-      
-      const response = await authAPI.register({
+      // Derives the keys from the password and creates the encryption identity
+      const { token, user } = await cryptoSession.register({
         username: formData.username,
         email: formData.email,
         password: formData.password,
-        publicKey: publicKey,
       });
-
-      const { token, user } = response.data;
-
-      // Stocker la clé privée de manière sécurisée (en production, utiliser un stockage plus sûr)
-      // Pour cette démo, on la stocke dans localStorage (non recommandé en production)
-      const privateKey = cryptoService.privateKeyPem;
-      localStorage.setItem('privateKey', privateKey);
-
       onLogin(user, token);
     } catch (err) {
       const errorData = err.response?.data;
@@ -113,9 +79,9 @@ const Register = ({ onLogin }) => {
             )}
           </div>
         )}
-        {generatingKeys && (
+        {loading && (
           <div className="success-message">
-            {t('common.loading')}
+            {t('auth.generatingKeys')}
           </div>
         )}
         <form onSubmit={handleSubmit}>
@@ -153,8 +119,10 @@ const Register = ({ onLogin }) => {
               value={formData.password}
               onChange={handleChange}
               required
-              minLength={8}
+              minLength={10}
+              autoComplete="new-password"
             />
+            <small className="form-hint">{t('auth.passwordRules')}</small>
           </div>
           <div className="form-group">
             <label htmlFor="confirmPassword">{t('auth.confirmPassword')}</label>
@@ -167,7 +135,7 @@ const Register = ({ onLogin }) => {
               required
             />
           </div>
-          <button type="submit" className="btn" disabled={loading || generatingKeys}>
+          <button type="submit" className="btn" disabled={loading}>
             {loading ? t('common.loading') : t('auth.register')}
           </button>
         </form>

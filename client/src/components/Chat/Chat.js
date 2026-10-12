@@ -3,6 +3,7 @@ import Sidebar from './Sidebar';
 import ChatRoom from './ChatRoom';
 import socketService from '../../services/socketService';
 import { roomsAPI } from '../../services/api';
+import cryptoSession from '../../crypto/session';
 import { useTranslation } from '../../i18n';
 import './Chat.css';
 
@@ -32,12 +33,21 @@ const Chat = ({ user, onLogout }) => {
     // Écouter les événements Socket.IO
     socketService.on('user_joined', handleUserJoined);
     socketService.on('user_left', handleUserLeft);
+    socketService.on('room_key_needed', handleKeyNeeded);
 
     return () => {
       socketService.off('user_joined', handleUserJoined);
       socketService.off('user_left', handleUserLeft);
+      socketService.off('room_key_needed', handleKeyNeeded);
     };
   }, [loadRooms]);
+
+  // A member of one of our rooms has no key yet: wrap ours for them
+  const handleKeyNeeded = (data) => {
+    cryptoSession.shareWith(data.roomId, data.userId).catch(error => {
+      console.error('Partage de clé impossible:', error);
+    });
+  };
 
   const handleUserJoined = (data) => {
     console.log('Utilisateur rejoint:', data);

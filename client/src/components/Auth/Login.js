@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authAPI } from '../../services/api';
+import cryptoSession from '../../crypto/session';
 import { useTranslation } from '../../i18n';
 
 const Login = ({ onLogin }) => {
@@ -27,12 +27,8 @@ const Login = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      const response = await authAPI.login(formData);
-      const { token, user } = response.data;
-
-      // Initialiser le service de chiffrement si nécessaire
-      // (la clé privée devrait être stockée côté client de manière sécurisée)
-      
+      // Derives the keys locally and unlocks the private key stored on the server
+      const { token, user } = await cryptoSession.login(formData);
       onLogin(user, token);
     } catch (err) {
       const errorData = err.response?.data;

@@ -209,3 +209,75 @@
   cursor: not-allowed;
 }
 
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.verify-keys-btn {
+  border: 1px solid #d0d4dc;
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.key-panel {
+  border-bottom: 1px solid #e3e6eb;
+  padding: 12px 20px;
+  background: #f7f8fa;
+  font-size: 13px;
+}
+
+.key-panel-help {
+  margin: 0 0 8px;
+  color: #555;
+}
+
+.key-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.key-panel li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.key-panel code {
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.5px;
+}
+
+.key-waiting,
+.message-locked {
+  color: #8a6d00;
+  font-size: 13px;
+}
+
+.key-waiting {
+  padding: 8px 20px;
+  background: #fff8e1;
+  border-bottom: 1px solid #f0e2a8;
+}
+
+.file-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+/* Leave room for the fixed language switcher in the top-right corner */
+.chat-header-actions {
+  margin-right: 140px;
+}

@@ -2,10 +2,31 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { fr, enUS } from 'date-fns/locale';
 import socketService from '../../services/socketService';
-import cryptoService from '../../crypto/cryptoService';
-import { messagesAPI, filesAPI } from '../../services/api';
+import cryptoSession from '../../crypto/session';
+import { messagesAPI, filesAPI, roomsAPI } from '../../services/api';
 import { useTranslation } from '../../i18n';
 import './ChatRoom.css';
+
+// Decrypts one message from the server. The ciphertext is kept in `raw`, so the
+// message can be decrypted again once a missing room key arrives.
+const openMessage = async (roomId, raw) => {
+  const plaintext = await cryptoSession.decryptText(roomId, raw);
+  const base = { ...raw, raw };
+  if (plaintext === null) {
+    const missingKey = !cryptoSession.key(roomId, raw.keyVersion);
+    return { ...base, content: null, locked: missingKey ? 'missing' : 'invalid' };
+  }
+  if (raw.type === 'file') {
+    // File name, type and size are encrypted inside the message
+    try {
+      const meta = JSON.parse(plaintext);
+      return { ...base, content: null, fileMeta: meta };
+    } catch {
+      return { ...base, content: null, locked: 'invalid' };
+    }
+  }
+  return { ...base, content: plaintext };
+};
 
 const ChatRoom = ({ room, user }) => {
   const { t, language } = useTranslation();
@@ -15,6 +36,9 @@ const ChatRoom = ({ room, user }) => {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [keyReady, setKeyReady] = useState(true);
+  const [memberKeys, setMemberKeys] = useState(null);
+  const pendingRef = useRef(null); // last message sent, re-sent once if its key was stale
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -28,46 +52,32 @@ const ChatRoom = ({ room, user }) => {
 
   const loadMessages = useCallback(async () => {
     if (!room) return;
-    
+
     try {
       setLoading(true);
+      // Fetches our room keys first (and creates the first one in a new room)
+      setKeyReady(!!(await cryptoSession.syncRoom(room.id)));
       const response = await messagesAPI.getByRoom(room.id, { limit: 50 });
-      
-      // Déchiffrer les messages
-      const decryptedMessages = await Promise.all(
-        response.data.messages.map(async (msg) => {
-          try {
-            if (msg.encrypted && msg.content && msg.iv) {
-              const decrypted = await cryptoService.decryptMessage(
-                msg.content,
-                msg.iv,
-                room.id
-              );
-              return { ...msg, content: decrypted, decrypted: true };
-            }
-            return msg;
-          } catch (error) {
-            console.error('Erreur lors du déchiffrement (loadMessages):', error);
-            console.error('Message:', {
-              id: msg.id,
-              roomId: room.id,
-              hasContent: !!msg.content,
-              hasIv: !!msg.iv,
-              encrypted: msg.encrypted,
-              senderId: msg.senderId
-            });
-            return { ...msg, content: `[${t('errors.decryptionError')}]`, decrypted: false };
-          }
-        })
-      );
-
-      setMessages(decryptedMessages);
+      setMessages(await Promise.all(response.data.messages.map(msg => openMessage(room.id, msg))));
     } catch (error) {
       console.error('Erreur lors du chargement des messages:', error);
     } finally {
       setLoading(false);
     }
   }, [room]);
+
+  // A room key arrived (shared by a member or rotated): decrypt what was locked
+  const refreshKeys = useCallback(async () => {
+    setKeyReady(!!(await cryptoSession.syncRoom(room.id)));
+    const current = messagesRef.current;
+    const reopened = await Promise.all(current.map(msg => (msg.locked ? openMessage(room.id, msg.raw) : msg)));
+    setMessages(reopened);
+  }, [room]);
+
+  const messagesRef = useRef([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     if (!room) return;
@@ -80,30 +90,10 @@ const ChatRoom = ({ room, user }) => {
 
     // Écouter les événements Socket.IO
     const handleNewMessage = async (data) => {
-      let messageToAdd = data.message;
-      
-      // Déchiffrer le message si nécessaire
-      if (messageToAdd.encrypted && messageToAdd.content && messageToAdd.iv) {
-        try {
-          const decrypted = await cryptoService.decryptMessage(
-            messageToAdd.content,
-            messageToAdd.iv,
-            room.id
-          );
-          messageToAdd = { ...messageToAdd, content: decrypted, decrypted: true };
-        } catch (error) {
-          console.error('Erreur lors du déchiffrement:', error);
-          console.error('Message:', {
-            id: messageToAdd.id,
-            roomId: room.id,
-            hasContent: !!messageToAdd.content,
-            hasIv: !!messageToAdd.iv,
-            encrypted: messageToAdd.encrypted
-          });
-          messageToAdd = { ...messageToAdd, content: `[${t('errors.decryptionError')}]`, decrypted: false };
-        }
-      }
-      
+      if (data.message.room !== room.id) return;
+      const messageToAdd = await openMessage(room.id, data.message);
+      if (messageToAdd.sender?.id === user.id) pendingRef.current = null;
+
       setMessages(prev => {
         // Vérifier si le message existe déjà par son ID (évite les doublons)
         const existingIndex = prev.findIndex(msg => msg.id === messageToAdd.id);
@@ -174,7 +164,24 @@ const ChatRoom = ({ room, user }) => {
     };
 
 
+    const handleKeyEvent = (data) => {
+      if (data.roomId === room.id) refreshKeys();
+    };
+
+    // Our message used a key version that is no longer current: re-sync and resend once
+    const handleSocketError = async (data) => {
+      if (data?.code !== 'STALE_KEY' || data.roomId !== room.id) return;
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      if (!pending) return;
+      const payload = await cryptoSession.encryptText(room.id, pending.plaintext);
+      if (payload) socketService.sendMessage(room.id, payload, pending.type, pending.file);
+    };
+
     socketService.on('new_message', handleNewMessage);
+    socketService.on('room_key_shared', handleKeyEvent);
+    socketService.on('room_key_rotated', handleKeyEvent);
+    socketService.on('error', handleSocketError);
     socketService.on('typing', handleTyping);
     socketService.on('user_joined', handleUserJoined);
     socketService.on('user_left', handleUserLeft);
@@ -183,12 +190,15 @@ const ChatRoom = ({ room, user }) => {
     return () => {
       socketService.leaveRoom(room.id);
       socketService.off('new_message', handleNewMessage);
+      socketService.off('room_key_shared', handleKeyEvent);
+      socketService.off('room_key_rotated', handleKeyEvent);
+      socketService.off('error', handleSocketError);
       socketService.off('typing', handleTyping);
       socketService.off('user_joined', handleUserJoined);
       socketService.off('user_left', handleUserLeft);
       socketService.off('room_users', handleRoomUsers);
     };
-  }, [room, user, loadMessages]);
+  }, [room, user, loadMessages, refreshKeys]);
 
   useEffect(() => {
     scrollToBottom();
@@ -205,26 +215,28 @@ const ChatRoom = ({ room, user }) => {
     try {
       setSending(true);
 
-      // Chiffrer le message
-      const { encrypted, iv } = await cryptoService.encryptMessage(messageContent, room.id);
+      // Chiffrer le message avec la clé actuelle de la room
+      const payload = await cryptoSession.encryptText(room.id, messageContent);
+      if (!payload) {
+        setKeyReady(false);
+        setNewMessage(messageContent);
+        return;
+      }
 
       // Ajouter le message localement (optimistic update) avec un ID temporaire unique
       const tempId = `temp-${Date.now()}-${Math.random()}`;
-      const tempMessage = {
+      setMessages(prev => [...prev, {
         id: tempId,
         sender: { id: user.id, username: user.username },
         content: messageContent,
         type: 'text',
-        encrypted: true,
         createdAt: new Date(),
-        decrypted: true,
-        isTemp: true // Marqueur pour identifier les messages temporaires
-      };
-      setMessages(prev => [...prev, tempMessage]);
+        isTemp: true
+      }]);
       scrollToBottom();
 
-      // Envoyer via Socket.IO
-      socketService.sendMessage(room.id, encrypted, iv, 'text');
+      pendingRef.current = { plaintext: messageContent, type: 'text', file: null };
+      socketService.sendMessage(room.id, payload, 'text');
     } catch (error) {
       console.error('Erreur lors de l\'envoi du message:', error);
           alert(t('errors.network'));
@@ -233,6 +245,19 @@ const ChatRoom = ({ room, user }) => {
     } finally {
       setSending(false);
     }
+  };
+
+  // Fingerprints of the members' public keys, to compare out of band
+  const toggleMemberKeys = async () => {
+    if (memberKeys) {
+      setMemberKeys(null);
+      return;
+    }
+    const { data } = await roomsAPI.getPublicKeys(room.id);
+    setMemberKeys(await Promise.all(data.members.map(async m => ({
+      ...m,
+      fingerprint: await cryptoSession.fingerprint(m.publicKey)
+    }))));
   };
 
   const handleTyping = () => {
@@ -286,41 +311,24 @@ const ChatRoom = ({ room, user }) => {
     try {
       setSending(true);
 
-      // Chiffrer le fichier
-      const { encryptedBlob, iv, originalName, mimeType, size } = await cryptoService.encryptFile(file, room.id);
-      
-      // Calculer le hash du fichier CHIFFRÉ (pas du fichier original)
-      const checksum = await cryptoService.calculateFileHash(encryptedBlob);
-
-      // Créer FormData
+      // Chiffrer le fichier : le serveur ne reçoit qu'un blob opaque
+      const sealed = await cryptoSession.encryptFile(room.id, file);
+      if (!sealed) {
+        setKeyReady(false);
+        return;
+      }
       const formData = new FormData();
-      // Conserver l'extension originale pour la validation Multer
-      const encryptedFileName = originalName || 'encrypted_file.bin';
-      formData.append('file', encryptedBlob, encryptedFileName);
-      formData.append('iv', iv);
-      formData.append('checksum', checksum);
-      
-      console.log('Upload fichier:', {
-        originalName,
-        encryptedSize: encryptedBlob.size,
-        originalSize: size,
-        checksum: checksum.substring(0, 16) + '...'
-      });
-
-      // Upload le fichier
+      formData.append('iv', sealed.iv);
+      formData.append('checksum', sealed.checksum);
+      formData.append('file', new Blob([sealed.data], { type: 'application/octet-stream' }), 'encrypted.bin');
       const response = await filesAPI.upload(room.id, formData);
 
-      // Envoyer un message avec le fichier
-      const fileMessage = `📎 ${originalName} (${(size / 1024).toFixed(2)} KB)`;
-      const { encrypted, iv: messageIv } = await cryptoService.encryptMessage(fileMessage, room.id);
-
-      socketService.sendMessage(room.id, encrypted, messageIv, 'file', {
-        id: response.data.file.id,
-        originalName: originalName,
-        mimeType: mimeType,
-        size: size,
-        iv: iv, // Inclure l'IV pour le déchiffrement
-      });
+      // Le nom, le type et la taille réels voyagent chiffrés dans le message
+      const meta = JSON.stringify({ name: file.name, mime: file.type, size: file.size, keyVersion: sealed.keyVersion });
+      const payload = await cryptoSession.encryptText(room.id, meta);
+      const fileRef = { id: response.data.file.id };
+      pendingRef.current = { plaintext: meta, type: 'file', file: fileRef };
+      socketService.sendMessage(room.id, payload, 'file', fileRef);
 
       setNewMessage('');
     } catch (error) {
@@ -347,11 +355,32 @@ const ChatRoom = ({ room, user }) => {
           <h2>{room.name}</h2>
           {room.description && <p className="room-description">{room.description}</p>}
         </div>
-        <div className="online-indicator">
-          <span className="online-dot"></span>
-          <span>{onlineUsers.length} {t('chat.online')}</span>
+        <div className="chat-header-actions">
+          <button type="button" className="verify-keys-btn" onClick={toggleMemberKeys}>
+            🔑 {t('chat.verifyKeys')}
+          </button>
+          <div className="online-indicator">
+            <span className="online-dot"></span>
+            <span>{onlineUsers.length} {t('chat.online')}</span>
+          </div>
         </div>
       </div>
+
+      {memberKeys && (
+        <div className="key-panel">
+          <p className="key-panel-help">{t('chat.fingerprintHelp')}</p>
+          <ul>
+            {memberKeys.map(m => (
+              <li key={m.userId}>
+                <span className="key-panel-user">{m.userId === user.id ? t('chat.you') : m.username}</span>
+                <code>{m.fingerprint}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!keyReady && <div className="key-waiting">🔒 {t('chat.waitingForKey')}</div>}
 
       <div className="messages-container">
         {loading ? (
@@ -365,68 +394,43 @@ const ChatRoom = ({ room, user }) => {
               className={`message ${message.sender.id === user.id ? 'own' : 'other'}`}
             >
               <div className="message-content">
-                {message.type === 'file' ? (
-                  <div>
-                    <p>{message.content}</p>
-                    {message.file && (
-                      <div className="file-message">
-                        <a
-                          href={`${process.env.REACT_APP_API_URL || 'http://localhost:3001/api'}/files/${message.file.id || message.file.filename}/download`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="file-link"
-                          onClick={async (e) => {
-                            e.preventDefault();
-                            if (!message.file.id && !message.file.filename) {
-                              alert(t('errors.fileDownloadError'));
-                              return;
-                            }
-                            
-                            try {
-                              // Télécharger le fichier (utiliser l'ID si disponible, sinon le filename)
-                              const fileId = message.file.id || message.file.filename;
-                              const response = await filesAPI.download(fileId);
-                              
-                              // Le fichier est chiffré, il faut le déchiffrer
-                              const blob = new Blob([response.data]);
-                              
-                              // Récupérer l'IV depuis les headers de la réponse ou le message
-                              const fileIv = response.headers['x-file-iv'] || message.file.iv || '';
-                              
-                              if (!fileIv) {
-                                throw new Error(t('errors.decryptionError'));
-                              }
-                              
-                              const decryptedBlob = await cryptoService.decryptFile(
-                                blob,
-                                fileIv,
-                                room.id
-                              );
-                              
-                              // Créer un lien de téléchargement
-                              const url = window.URL.createObjectURL(decryptedBlob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = message.file.originalName || 'file';
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                              window.URL.revokeObjectURL(url);
-                            } catch (error) {
-                              console.error('Erreur lors du téléchargement du fichier:', error);
-                              alert('Erreur lors du téléchargement du fichier: ' + (error.response?.data?.error || error.message));
-                            }
-                          }}
-                        >
-                          📎 {t('chat.download')} {message.file.originalName || t('chat.file')}
-                        </a>
-                        {message.file.size && (
-                          <span className="file-size">
-                            ({(message.file.size / 1024).toFixed(2)} KB)
-                          </span>
-                        )}
-                      </div>
-                    )}
+                {message.locked ? (
+                  <p className="message-locked">
+                    🔒 {message.locked === 'missing' ? t('chat.waitingForKey') : t('errors.decryptionError')}
+                  </p>
+                ) : message.fileMeta ? (
+                  <div className="file-message">
+                    <button
+                      type="button"
+                      className="file-link"
+                      onClick={async () => {
+                        try {
+                          const response = await filesAPI.download(message.file.id);
+                          const bytes = new Uint8Array(await response.data.arrayBuffer());
+                          const iv = response.headers['x-file-iv'] || message.file.iv;
+                          const clear = await cryptoSession.decryptFile(
+                            room.id,
+                            { keyVersion: message.fileMeta.keyVersion, sender: message.sender },
+                            bytes,
+                            iv
+                          );
+                          const url = window.URL.createObjectURL(new Blob([clear], { type: message.fileMeta.mime || 'application/octet-stream' }));
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = message.fileMeta.name || 'file';
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          window.URL.revokeObjectURL(url);
+                        } catch (error) {
+                          console.error('Erreur lors du téléchargement du fichier:', error);
+                          alert(t('errors.fileDownloadError'));
+                        }
+                      }}
+                    >
+                      📎 {t('chat.download')} {message.fileMeta.name}
+                    </button>
+                    <span className="file-size">({(message.fileMeta.size / 1024).toFixed(2)} KB)</span>
                   </div>
                 ) : (
                   <p>{message.content}</p>
@@ -479,7 +483,7 @@ const ChatRoom = ({ room, user }) => {
           placeholder={t('chat.typeMessage')}
           disabled={sending}
         />
-        <button type="submit" className="send-btn" disabled={sending || !newMessage.trim()}>
+        <button type="submit" className="send-btn" disabled={sending || !keyReady || !newMessage.trim()}>
           {sending ? t('chat.sending') : t('chat.send')}
         </button>
       </form>

@@ -83,12 +83,13 @@ class SocketService {
   /**
    * Envoie un message
    */
-  sendMessage(roomId, content, iv, type = 'text', file = null) {
+  sendMessage(roomId, { content, iv, keyVersion }, type = 'text', file = null) {
     if (this.socket?.connected) {
       this.socket.emit('send_message', {
         roomId,
         content,
         iv,
+        keyVersion,
         type,
         file,
       });
@@ -114,20 +115,11 @@ class SocketService {
   }
 
   /**
-   * Demande la clé AES d'une room
+   * Demande aux membres en ligne de partager la clé actuelle d'une room
    */
   requestRoomKey(roomId) {
     if (this.socket?.connected) {
       this.socket.emit('request_room_key', { roomId });
-    }
-  }
-
-  /**
-   * Partage la clé AES d'une room avec un utilisateur
-   */
-  shareRoomKey(roomId, userId, encryptedKey) {
-    if (this.socket?.connected) {
-      this.socket.emit('share_room_key', { roomId, userId, encryptedKey });
     }
   }
 
@@ -138,11 +130,9 @@ class SocketService {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
     }
+    // Server events reach listeners through onAny() in connect(): registering
+    // them on the socket too would call every listener twice
     this.listeners.get(event).push(callback);
-
-    if (this.socket) {
-      this.socket.on(event, callback);
-    }
   }
 
   /**
@@ -155,10 +145,6 @@ class SocketService {
       if (index > -1) {
         listeners.splice(index, 1);
       }
-    }
-
-    if (this.socket) {
-      this.socket.off(event, callback);
     }
   }
 

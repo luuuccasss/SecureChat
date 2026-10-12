@@ -1,3 +1,4 @@
+/* global globalThis */
 // SecureChat end-to-end encryption (protocol v2), built on the Web Crypto API only.
 //
 // - The password never leaves the browser. PBKDF2 (600k iterations) turns it into a

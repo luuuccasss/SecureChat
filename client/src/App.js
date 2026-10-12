@@ -6,6 +6,7 @@ import Chat from './components/Chat/Chat';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import socketService from './services/socketService';
 import { authAPI } from './services/api';
+import cryptoSession from './crypto/session';
 import { useTranslation } from './i18n';
 import './App.css';
 
@@ -21,9 +22,14 @@ function App() {
 
     if (token && storedUser) {
       // Vérifier le token
+      // The session is only resumed if the unlocked private key is still in this
+      // browser; otherwise the password is needed again
+      const parsedUser = JSON.parse(storedUser);
       authAPI.verify()
-        .then(response => {
-          setUser(JSON.parse(storedUser));
+        .then(() => cryptoSession.restore(parsedUser.id))
+        .then(restored => {
+          if (!restored) throw new Error('locked');
+          setUser(parsedUser);
           socketService.connect(token);
         })
         .catch(() => {
@@ -45,7 +51,10 @@ function App() {
     socketService.connect(token);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Revokes the token server-side, then wipes keys from this browser
+    await authAPI.logout().catch(() => {});
+    await cryptoSession.forget();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);

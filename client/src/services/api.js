@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearIdentity } from '../crypto/keystore';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
@@ -32,7 +33,9 @@ api.interceptors.response.use(
       // Token expiré ou invalide
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      clearIdentity().catch(() => {}).finally(() => {
+        window.location.href = '/login';
+      });
     }
     return Promise.reject(error);
   }
@@ -56,6 +59,11 @@ export const roomsAPI = {
   join: (roomId, password) => api.post(`/rooms/${roomId}/join`, { password }),
   leave: (roomId) => api.post(`/rooms/${roomId}/leave`),
   delete: (roomId) => api.delete(`/rooms/${roomId}`),
+  // End-to-end encryption: wrapped room keys and member public keys
+  getKeys: (roomId) => api.get(`/rooms/${roomId}/keys`),
+  getPublicKeys: (roomId) => api.get(`/rooms/${roomId}/public-keys`),
+  shareKey: (roomId, data) => api.post(`/rooms/${roomId}/keys`, data),
+  rotateKeys: (roomId, data) => api.post(`/rooms/${roomId}/keys/rotate`, data),
 };
 
 // API des messages

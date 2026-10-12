@@ -17,7 +17,10 @@
     "loginSuccess": "Connexion réussie",
     "registerSuccess": "Inscription réussie",
     "loginError": "Échec de la connexion",
-    "registerError": "Échec de l'inscription"
+    "registerError": "Échec de l'inscription",
+    "passwordMismatch": "Les mots de passe ne correspondent pas",
+    "passwordRules": "Au moins 10 caractères, avec une majuscule, une minuscule et un chiffre",
+    "generatingKeys": "Génération de vos clés de chiffrement…"
   },
   "chat": {
     "rooms": "Rooms",
@@ -50,7 +53,10 @@
     "noRooms": "Aucune room disponible",
     "createFirstRoom": "Créez votre première room pour commencer !",
     "you": "Vous",
-    "file": "le fichier"
+    "file": "le fichier",
+    "waitingForKey": "En attente de la clé de ce salon : un membre connecté doit vous la transmettre",
+    "verifyKeys": "Vérifier les clés",
+    "fingerprintHelp": "Comparez ces empreintes avec vos contacts par un autre moyen (en personne, appel). Si elles correspondent, personne, pas même le serveur, ne peut lire vos messages."
   },
   "moderation": {
     "banUser": "Bannir",
@@ -100,4 +106,3 @@
     "info": "Information"
   }
 }
-
